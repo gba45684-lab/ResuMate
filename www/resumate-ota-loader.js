@@ -10,10 +10,35 @@
   var reloading = false;
   var restoring = false;
   var banner = null;
+  var otaControl = null;
   var audioContext = null;
   var DB_NAME = 'resumate-ota';
   var DB_VERSION = 1;
   var STORE = 'app';
+  var OTA_ENABLED_KEY = 'resumate.ota.enabled';
+
+  function isEnabled() {
+    try {
+      var value = localStorage.getItem(OTA_ENABLED_KEY);
+      return value === null ? true : value === 'true';
+    } catch (_) { return true; }
+  }
+
+  function setEnabled(value) {
+    value = !!value;
+    try { localStorage.setItem(OTA_ENABLED_KEY, String(value)); } catch (_) {}
+    if (!value) {
+      pendingBuild = null;
+      if (banner && banner.parentNode) banner.parentNode.removeChild(banner);
+      banner = null;
+      mark('disabled-by-user', 'OTA updates are disabled.');
+    } else {
+      mark('enabled', 'OTA updates are enabled.');
+      check();
+    }
+    renderOtaControl();
+    return value;
+  }
 
   function buildBase(build) { return RAW_ROOT + encodeURIComponent(String(build)) + '/www/'; }
   function buildIndex(build) { return buildBase(build) + 'index.html'; }
@@ -101,8 +126,9 @@
 
   function mark(status, detail) {
     try {
-      window.__RESUMATE_OTA__ = { status: status, detail: detail || '', checkedAt: new Date().toISOString(), pollMs: POLL_MS, bundledBuild: startingBuild || null, pendingBuild: pendingBuild || null };
+      window.__RESUMATE_OTA__ = { status: status, detail: detail || '', enabled: isEnabled(), checkedAt: new Date().toISOString(), pollMs: POLL_MS, bundledBuild: startingBuild || null, pendingBuild: pendingBuild || null };
       window.dispatchEvent(new CustomEvent('resumate:ota-status', { detail: window.__RESUMATE_OTA__ }));
+      renderOtaControl();
     } catch (_) {}
   }
 
@@ -132,6 +158,24 @@
     } catch (_) {}
   }
 
+  function renderOtaControl() {
+    if (!document.body) return;
+    try {
+      if (otaControl && !otaControl.isConnected) otaControl = null;
+      if (!otaControl) {
+        otaControl = document.createElement('div');
+        otaControl.id = 'resumate-ota-control';
+        otaControl.setAttribute('role', 'group');
+        otaControl.setAttribute('aria-label', 'OTA updates');
+        otaControl.style.cssText = 'position:fixed;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:2147483646;background:rgba(17,17,17,.94);color:#fff;padding:7px 9px 7px 11px;border-radius:999px;box-shadow:0 4px 18px rgba(0,0,0,.22);font:600 12px system-ui,-apple-system,Segoe UI,sans-serif;display:flex;align-items:center;gap:8px;backdrop-filter:blur(8px);';
+        document.body.appendChild(otaControl);
+      }
+      otaControl.innerHTML = '<span>OTA</span><label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input id="resumate-ota-enabled" type="checkbox" style="width:16px;height:16px;margin:0;accent-color:#fff" ' + (isEnabled() ? 'checked' : '') + '><span>' + (isEnabled() ? 'ON' : 'OFF') + '</span></label>';
+      var toggle = otaControl.querySelector('#resumate-ota-enabled');
+      if (toggle) toggle.addEventListener('change', function () { setEnabled(toggle.checked); });
+    } catch (_) {}
+  }
+
   function showUpdateBanner(build) {
     pendingBuild = String(build);
     mark('update-available', pendingBuild);
@@ -144,7 +188,7 @@
       '<div style="display:flex;align-items:center;gap:10px">' +
       '<button id="resumate-ota-update-toggle" type="button" aria-pressed="false" style="appearance:none;border:0;border-radius:999px;padding:9px 15px;font-weight:700;cursor:pointer">Update now</button>' +
       '<button id="resumate-ota-dismiss" type="button" style="background:transparent;border:0;color:inherit;opacity:.75;padding:6px;cursor:pointer">Later</button></div>';
-    banner.style.cssText = 'position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:2147483647;background:#111;color:#fff;padding:14px 16px;border-radius:14px;box-shadow:0 8px 30px rgba(0,0,0,.28);font-family:system-ui,-apple-system,Segoe UI,sans-serif;box-sizing:border-box;';
+    banner.style.cssText = 'position:fixed;left:12px;right:12px;bottom:calc(56px + env(safe-area-inset-bottom));z-index:2147483647;background:#111;color:#fff;padding:14px 16px;border-radius:14px;box-shadow:0 8px 30px rgba(0,0,0,.28);font-family:system-ui,-apple-system,Segoe UI,sans-serif;box-sizing:border-box;';
     document.body.appendChild(banner);
     var updateButton = document.getElementById('resumate-ota-update-toggle'), laterButton = document.getElementById('resumate-ota-dismiss');
     if (updateButton) updateButton.addEventListener('click', function () {
@@ -173,6 +217,7 @@
 
   function check() {
     if (restoring) return;
+    if (!isEnabled()) { applyUiChromeFix(); mark('disabled-by-user', 'OTA updates are disabled.'); return; }
     if (!navigator.onLine) { applyUiChromeFix(); mark('offline', 'Using bundled or cached application.'); return; }
     fetch(VERSION_URL + '?t=' + Date.now(), { cache: 'no-store', credentials: 'omit' })
       .then(function (r) { if (!r.ok) throw new Error('version manifest HTTP ' + r.status); return r.json(); })
@@ -188,11 +233,13 @@
       .catch(function (error) { applyUiChromeFix(); mark('check-failed', String(error && error.message || error)); });
   }
 
-  window.ResuMateOTA = { baseUrl: RAW_ROOT, versionUrl: VERSION_URL, pollMs: POLL_MS, check: check, update: function () { return pendingBuild ? loadRemoteApp(pendingBuild) : Promise.resolve(); }, status: function () { return window.__RESUMATE_OTA__ || null; } };
+  window.ResuMateOTA = { baseUrl: RAW_ROOT, versionUrl: VERSION_URL, pollMs: POLL_MS, check: check, setEnabled: setEnabled, isEnabled: isEnabled, update: function () { return pendingBuild ? loadRemoteApp(pendingBuild) : Promise.resolve(); }, status: function () { return window.__RESUMATE_OTA__ || null; } };
 
   function start() {
     applyUiChromeFix();
+    renderOtaControl();
     restoreCachedApp().then(function (restored) {
+      renderOtaControl();
       if (!restored) check();
       setInterval(check, POLL_MS);
       document.addEventListener('visibilitychange', function () { if (!document.hidden) check(); });
