@@ -11,6 +11,7 @@
   var restoring = false;
   var banner = null;
   var otaControl = null;
+  var controlObserver = null;
   var audioContext = null;
   var DB_NAME = 'resumate-ota';
   var DB_VERSION = 1;
@@ -36,7 +37,7 @@
       mark('enabled', 'OTA updates are enabled.');
       check();
     }
-    renderOtaControl();
+    ensureOtaControl(true);
     return value;
   }
 
@@ -56,8 +57,7 @@
         '[id="status-bar"], [id="statusBar"], [id="app-status-bar"], [id="top-status-bar"],',
         '[class~="status-bar"], [class~="statusBar"], [class~="app-status-bar"], [class~="top-status-bar"],',
         '[data-status-bar] { display: none !important; }',
-        '[style*="safe-area-inset-top"] { padding-top: 0 !important; margin-top: 0 !important; }',
-        'body > :first-child { margin-top: 0 !important; }'
+        '[style*="safe-area-inset-top"] { padding-top: 0 !important; margin-top: 0 !important; }'
       ].join('\\n');
       (document.head || document.documentElement).appendChild(style);
       document.querySelectorAll('meta[name="viewport"]').forEach(function (meta) {
@@ -128,7 +128,7 @@
     try {
       window.__RESUMATE_OTA__ = { status: status, detail: detail || '', enabled: isEnabled(), checkedAt: new Date().toISOString(), pollMs: POLL_MS, bundledBuild: startingBuild || null, pendingBuild: pendingBuild || null };
       window.dispatchEvent(new CustomEvent('resumate:ota-status', { detail: window.__RESUMATE_OTA__ }));
-      renderOtaControl();
+      ensureOtaControl();
     } catch (_) {}
   }
 
@@ -158,21 +158,33 @@
     } catch (_) {}
   }
 
-  function renderOtaControl() {
+  function ensureOtaControl(force) {
     if (!document.body) return;
     try {
-      if (otaControl && !otaControl.isConnected) otaControl = null;
-      if (!otaControl) {
+      var existing = document.getElementById('resumate-ota-control');
+      if (existing && otaControl !== existing) otaControl = existing;
+      if (!otaControl || !otaControl.isConnected) {
         otaControl = document.createElement('div');
         otaControl.id = 'resumate-ota-control';
         otaControl.setAttribute('role', 'group');
         otaControl.setAttribute('aria-label', 'OTA updates');
-        otaControl.style.cssText = 'position:fixed;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:2147483646;background:rgba(17,17,17,.94);color:#fff;padding:7px 9px 7px 11px;border-radius:999px;box-shadow:0 4px 18px rgba(0,0,0,.22);font:600 12px system-ui,-apple-system,Segoe UI,sans-serif;display:flex;align-items:center;gap:8px;backdrop-filter:blur(8px);';
+        otaControl.style.cssText = 'position:fixed;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:2147483647;background:rgba(17,17,17,.97);color:#fff;padding:7px 9px 7px 11px;border-radius:999px;box-shadow:0 4px 18px rgba(0,0,0,.30);font:600 12px system-ui,-apple-system,Segoe UI,sans-serif;display:flex;align-items:center;gap:8px;backdrop-filter:blur(8px);pointer-events:auto;visibility:visible;opacity:1;';
         document.body.appendChild(otaControl);
       }
-      otaControl.innerHTML = '<span>OTA</span><label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input id="resumate-ota-enabled" type="checkbox" style="width:16px;height:16px;margin:0;accent-color:#fff" ' + (isEnabled() ? 'checked' : '') + '><span>' + (isEnabled() ? 'ON' : 'OFF') + '</span></label>';
-      var toggle = otaControl.querySelector('#resumate-ota-enabled');
-      if (toggle) toggle.addEventListener('change', function () { setEnabled(toggle.checked); });
+      if (force || !otaControl.querySelector('#resumate-ota-enabled')) {
+        otaControl.innerHTML = '<span style="user-select:none">OTA</span><label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input id="resumate-ota-enabled" type="checkbox" aria-label="Enable OTA updates" style="width:16px;height:16px;margin:0;accent-color:#fff" ' + (isEnabled() ? 'checked' : '') + '><span id="resumate-ota-state">' + (isEnabled() ? 'ON' : 'OFF') + '</span></label>';
+        var toggle = otaControl.querySelector('#resumate-ota-enabled');
+        if (toggle) toggle.addEventListener('change', function () { setEnabled(toggle.checked); });
+      }
+      if (!controlObserver && window.MutationObserver) {
+        controlObserver = new MutationObserver(function () {
+          if (!document.getElementById('resumate-ota-control')) {
+            otaControl = null;
+            ensureOtaControl(true);
+          }
+        });
+        controlObserver.observe(document.body, { childList: true });
+      }
     } catch (_) {}
   }
 
@@ -209,7 +221,7 @@
       .then(function (html) {
         return dbPut('active', { build: target, html: html, savedAt: Date.now() }).then(function () {
           document.open(); document.write(prepareRemoteHtml(html, target)); document.close();
-          reloading = false; startingBuild = target; pendingBuild = null; applyUiChromeFix(); mark('updated', target);
+          reloading = false; startingBuild = target; pendingBuild = null; applyUiChromeFix(); ensureOtaControl(true); mark('updated', target);
         });
       })
       .catch(function (error) { reloading = false; mark('fallback', String(error && error.message || error)); throw error; });
@@ -217,33 +229,43 @@
 
   function check() {
     if (restoring) return;
-    if (!isEnabled()) { applyUiChromeFix(); mark('disabled-by-user', 'OTA updates are disabled.'); return; }
-    if (!navigator.onLine) { applyUiChromeFix(); mark('offline', 'Using bundled or cached application.'); return; }
+    if (!isEnabled()) { applyUiChromeFix(); ensureOtaControl(); mark('disabled-by-user', 'OTA updates are disabled.'); return; }
+    if (!navigator.onLine) { applyUiChromeFix(); ensureOtaControl(); mark('offline', 'Using bundled or cached application.'); return; }
     fetch(VERSION_URL + '?t=' + Date.now(), { cache: 'no-store', credentials: 'omit' })
       .then(function (r) { if (!r.ok) throw new Error('version manifest HTTP ' + r.status); return r.json(); })
       .then(function (manifest) {
         if (restoring) return;
-        if (!manifest || manifest.enabled === false) { applyUiChromeFix(); mark('disabled'); return; }
+        if (!manifest || manifest.enabled === false) { applyUiChromeFix(); ensureOtaControl(); mark('disabled'); return; }
         var build = String(manifest.build || manifest.version || '');
         if (!build) throw new Error('OTA manifest build missing');
         if (startingBuild === null) startingBuild = build;
-        if (build !== startingBuild) { applyUiChromeFix(); showUpdateBanner(build); return; }
-        applyUiChromeFix(); mark('current', build);
+        if (build !== startingBuild) { applyUiChromeFix(); ensureOtaControl(); showUpdateBanner(build); return; }
+        applyUiChromeFix(); ensureOtaControl(); mark('current', build);
       })
-      .catch(function (error) { applyUiChromeFix(); mark('check-failed', String(error && error.message || error)); });
+      .catch(function (error) { applyUiChromeFix(); ensureOtaControl(); mark('check-failed', String(error && error.message || error)); });
   }
 
-  window.ResuMateOTA = { baseUrl: RAW_ROOT, versionUrl: VERSION_URL, pollMs: POLL_MS, check: check, setEnabled: setEnabled, isEnabled: isEnabled, update: function () { return pendingBuild ? loadRemoteApp(pendingBuild) : Promise.resolve(); }, status: function () { return window.__RESUMATE_OTA__ || null; } };
+  window.ResuMateOTA = {
+    baseUrl: RAW_ROOT,
+    versionUrl: VERSION_URL,
+    pollMs: POLL_MS,
+    check: check,
+    setEnabled: setEnabled,
+    isEnabled: isEnabled,
+    update: function () { return pendingBuild ? loadRemoteApp(pendingBuild) : Promise.resolve(); },
+    status: function () { return window.__RESUMATE_OTA__ || null; }
+  };
 
   function start() {
     applyUiChromeFix();
-    renderOtaControl();
+    ensureOtaControl(true);
     restoreCachedApp().then(function (restored) {
-      renderOtaControl();
+      ensureOtaControl(true);
       if (!restored) check();
       setInterval(check, POLL_MS);
-      document.addEventListener('visibilitychange', function () { if (!document.hidden) check(); });
+      document.addEventListener('visibilitychange', function () { if (!document.hidden) { ensureOtaControl(); check(); } });
       window.addEventListener('online', check);
+      window.addEventListener('pageshow', function () { ensureOtaControl(true); });
     });
   }
 
