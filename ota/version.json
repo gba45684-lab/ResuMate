@@ -1,1 +1,1 @@
-{"enabled":true,"version":"55ee36c65297","build":"55ee36c65297e7c26c6f840ad82616b85a849126","channel":"stable","releaseNotes":["Keep OTA control persistent across app renders"]}
+{"enabled":true,"version":"241820a70746","build":"241820a7074664080630d95fc76ee5123b83cf56","channel":"stable","releaseNotes":["Publish OTA only for real web app changes"]}
