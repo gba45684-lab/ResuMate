@@ -435,6 +435,8 @@
       window.addEventListener('online', check);
       window.addEventListener('pageshow', function () { ensureOtaControl(true); });
       window.addEventListener('resize', function () { applyOtaPosition(); applyPreviewUiFix(); });
+      // Keep the floating OTA control alive even if the SPA replaces/rebuilds body content.
+      setInterval(function () { ensureOtaControl(); applyPreviewUiFix(); }, 1200);
     });
   }
 
