@@ -19,25 +19,16 @@
   var OTA_ENABLED_KEY = 'resumate.ota.enabled';
 
   function isEnabled() {
-    try {
-      var value = localStorage.getItem(OTA_ENABLED_KEY);
-      return value === null ? true : value === 'true';
-    } catch (_) { return true; }
+    try { localStorage.setItem(OTA_ENABLED_KEY, 'true'); } catch (_) {}
+    return true;
   }
 
   function setEnabled(value) {
-    value = !!value;
-    try { localStorage.setItem(OTA_ENABLED_KEY, String(value)); } catch (_) {}
-    if (!value) {
-      pendingBuild = null;
-      if (banner && banner.parentNode) banner.parentNode.removeChild(banner);
-      banner = null;
-      mark('disabled-by-user', 'OTA updates are disabled.');
-    } else {
-      mark('enabled', 'OTA updates are enabled.');
-      check();
-    }
+    value = true;
+    try { localStorage.setItem(OTA_ENABLED_KEY, 'true'); } catch (_) {}
+    mark('enabled', 'OTA updates are always enabled.');
     ensureOtaControl(true);
+    check();
     return value;
   }
 
@@ -58,11 +49,11 @@
         '[class~="status-bar"], [class~="statusBar"], [class~="app-status-bar"], [class~="top-status-bar"],',
         '[data-status-bar] { display: none !important; }',
         '[style*="safe-area-inset-top"] { padding-top: 0 !important; margin-top: 0 !important; }'
-      ].join('\\n');
+      ].join('\n');
       (document.head || document.documentElement).appendChild(style);
       document.querySelectorAll('meta[name="viewport"]').forEach(function (meta) {
         var content = meta.getAttribute('content') || '';
-        if (/viewport-fit\\s*=\\s*cover/i.test(content)) meta.setAttribute('content', content.replace(/,?\\s*viewport-fit\\s*=\\s*cover/ig, ''));
+        if (/viewport-fit\s*=\s*cover/i.test(content)) meta.setAttribute('content', content.replace(/,?\s*viewport-fit\s*=\s*cover/ig, ''));
       });
     } catch (_) {}
   }
@@ -95,17 +86,17 @@
 
   function injectBuildMarker(html, build) {
     var marker = '<script>window.__RESUMATE_BUNDLED_BUILD__=' + JSON.stringify(String(build)) + ';</script>';
-    html = html.replace(/<script[^>]*>\\s*window\\.__RESUMATE_BUNDLED_BUILD__\\s*=.*?<\\/script>/gis, '');
+    html = html.replace(/<script[^>]*>\s*window\.__RESUMATE_BUNDLED_BUILD__\s*=.*?<\/script>/gis, '');
     return /<head[^>]*>/i.test(html) ? html.replace(/<head([^>]*)>/i, '<head$1>' + marker) : marker + html;
   }
 
   function prepareRemoteHtml(html, build) {
-    html = String(html).replace(/<script\\b[^>]*src=["'][^"']*resumate-ota-loader\\.js(?:\\?[^"']*)?["'][^>]*>\\s*<\\/script>/gi, '');
+    html = String(html).replace(/<script\b[^>]*src=["'][^"']*resumate-ota-loader\.js(?:\?[^"']*)?["'][^>]*>\s*<\/script>/gi, '');
     html = injectBuildMarker(html, build);
     var base = buildBase(build);
-    if (!/<base\\s/i.test(html)) html = html.replace(/<head([^>]*)>/i, '<head$1><base href="' + base + '">');
+    if (!/<base\s/i.test(html)) html = html.replace(/<head([^>]*)>/i, '<head$1><base href="' + base + '">');
     var tag = '<script src="' + buildLoader(build) + '" defer></script>';
-    return /<\\/body>/i.test(html) ? html.replace(/<\\/body>/i, tag + '\\n</body>') : html + tag;
+    return /<\/body>/i.test(html) ? html.replace(/<\/body>/i, tag + '\n</body>') : html + tag;
   }
 
   function restoreCachedApp() {
@@ -126,7 +117,7 @@
 
   function mark(status, detail) {
     try {
-      window.__RESUMATE_OTA__ = { status: status, detail: detail || '', enabled: isEnabled(), checkedAt: new Date().toISOString(), pollMs: POLL_MS, bundledBuild: startingBuild || null, pendingBuild: pendingBuild || null };
+      window.__RESUMATE_OTA__ = { status: status, detail: detail || '', enabled: true, checkedAt: new Date().toISOString(), pollMs: POLL_MS, bundledBuild: startingBuild || null, pendingBuild: pendingBuild || null };
       window.dispatchEvent(new CustomEvent('resumate:ota-status', { detail: window.__RESUMATE_OTA__ }));
       ensureOtaControl();
     } catch (_) {}
@@ -172,9 +163,7 @@
         document.body.appendChild(otaControl);
       }
       if (force || !otaControl.querySelector('#resumate-ota-enabled')) {
-        otaControl.innerHTML = '<span style="user-select:none">OTA</span><label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input id="resumate-ota-enabled" type="checkbox" aria-label="Enable OTA updates" style="width:16px;height:16px;margin:0;accent-color:#fff" ' + (isEnabled() ? 'checked' : '') + '><span id="resumate-ota-state">' + (isEnabled() ? 'ON' : 'OFF') + '</span></label>';
-        var toggle = otaControl.querySelector('#resumate-ota-enabled');
-        if (toggle) toggle.addEventListener('change', function () { setEnabled(toggle.checked); });
+        otaControl.innerHTML = '<span style="user-select:none">OTA</span><label style="display:flex;align-items:center;gap:5px;cursor:default"><input id="resumate-ota-enabled" type="checkbox" aria-label="OTA updates are always enabled" checked disabled style="width:16px;height:16px;margin:0;accent-color:#fff"><span id="resumate-ota-state">ON</span><span style="font-size:10px;opacity:.72;user-select:none">Always on</span></label>';
       }
       if (!controlObserver && window.MutationObserver) {
         controlObserver = new MutationObserver(function () {
