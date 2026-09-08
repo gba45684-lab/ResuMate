@@ -1,4 +1,4 @@
-/* ResuMate download manager: local persistence + download notifications + haptics. */
+/* ResuMate download manager: local persistence + native download notifications + haptics. */
 (function () {
   'use strict';
 
@@ -10,6 +10,34 @@
 
   function vibrate(pattern) {
     try { if (navigator.vibrate) navigator.vibrate(pattern || [35]); } catch (_) {}
+  }
+
+  function nativeNotifications() {
+    try {
+      return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.ResuMateNotifications;
+    } catch (_) { return null; }
+  }
+
+  function blobToBase64(blob) {
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onload = function () {
+        var value = String(reader.result || '');
+        var comma = value.indexOf(',');
+        resolve(comma >= 0 ? value.slice(comma + 1) : value);
+      };
+      reader.onerror = function () { reject(reader.error || new Error('Could not encode document')); };
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  function notifyNative(blob, name) {
+    var plugin = nativeNotifications();
+    if (!plugin || !blob || !blob.size) return Promise.resolve(false);
+    return blobToBase64(blob).then(function (dataBase64) {
+      return plugin.saveAndNotify({ filename: name, mimeType: blob.type || 'application/octet-stream', dataBase64: dataBase64 })
+        .then(function () { return true; });
+    }).catch(function () { return false; });
   }
 
   function openDb() {
@@ -105,10 +133,7 @@
     return panel;
   }
 
-  function openPanel() {
-    ensurePanel().style.display = 'block';
-    renderList();
-  }
+  function openPanel() { ensurePanel().style.display = 'block'; renderList(); }
   function closePanel() { if (panel) panel.style.display = 'none'; }
 
   function renderList() {
@@ -147,10 +172,18 @@
   function saveBlob(blob, name) {
     if (!blob || !blob.size) return Promise.resolve();
     var safeName = String(name || 'ResuMate-download').replace(/[\\/:*?"<>|]/g, '_');
-    return putFile({ id: safeName + '-' + Date.now() + '-' + Math.random().toString(36).slice(2), name: safeName, size: blob.size, type: blob.type || 'application/octet-stream', createdAt: Date.now(), blob: blob })
+    var record = { id: safeName + '-' + Date.now() + '-' + Math.random().toString(36).slice(2), name: safeName, size: blob.size, type: blob.type || 'application/octet-stream', createdAt: Date.now(), blob: blob };
+    return putFile(record)
       .then(prune)
-      .then(function () { toast('Download saved', safeName + ' is saved locally.', true); window.dispatchEvent(new CustomEvent('resumate:download-saved', { detail: { name: safeName, size: blob.size } })); })
-      .catch(function () { toast('Download started', safeName, true); });
+      .then(function () {
+        toast('Download saved', safeName + ' is saved locally.', true);
+        window.dispatchEvent(new CustomEvent('resumate:download-saved', { detail: { name: safeName, size: blob.size } }));
+        return notifyNative(blob, safeName).then(function (nativeDone) {
+          if (nativeDone) window.dispatchEvent(new CustomEvent('resumate:native-download-notified', { detail: { name: safeName, size: blob.size } }));
+          return nativeDone;
+        });
+      })
+      .catch(function () { toast('Download started', safeName, true); return false; });
   }
 
   function inspectAnchor(anchor) {
@@ -177,6 +210,10 @@
       open: openPanel,
       list: listFiles,
       saveBlob: saveBlob,
+      requestNativePermission: function () {
+        var plugin = nativeNotifications();
+        return plugin && plugin.requestNotificationPermission ? plugin.requestNotificationPermission() : Promise.resolve({ granted: false, unsupported: true });
+      },
       clear: function () { return listFiles().then(function (rows) { return Promise.all(rows.map(function (r) { return deleteFile(r.id); })); }); }
     };
     var ready = function () { ensurePanel(); };
