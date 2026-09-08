@@ -1,0 +1,14 @@
+apply plugin: 'com.android.library'
+
+android {
+    namespace 'com.resumate.notifications'
+    compileSdk 35
+
+    defaultConfig {
+        minSdk 23
+    }
+}
+
+dependencies {
+    implementation project(':capacitor-android')
+}
