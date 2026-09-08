@@ -9,8 +9,12 @@
   var startingBuild = window.__RESUMATE_BUNDLED_BUILD__ || null;
   var pendingBuild = null;
   var reloading = false;
+  var restoring = false;
   var banner = null;
   var audioContext = null;
+  var DB_NAME = 'resumate-ota';
+  var DB_VERSION = 1;
+  var STORE = 'app';
 
   function applyUiChromeFix() {
     try {
@@ -26,16 +30,86 @@
         '[data-status-bar] { display: none !important; }',
         '[style*="safe-area-inset-top"] { padding-top: 0 !important; margin-top: 0 !important; }',
         'body > :first-child { margin-top: 0 !important; }'
-      ].join('\n');
+      ].join('\\n');
       (document.head || document.documentElement).appendChild(style);
       var metas = document.querySelectorAll('meta[name="viewport"]');
       metas.forEach(function (meta) {
         var content = meta.getAttribute('content') || '';
-        if (/viewport-fit\s*=\s*cover/i.test(content)) {
-          meta.setAttribute('content', content.replace(/,?\s*viewport-fit\s*=\s*cover/ig, ''));
+        if (/viewport-fit\\s*=\\s*cover/i.test(content)) {
+          meta.setAttribute('content', content.replace(/,?\\s*viewport-fit\\s*=\\s*cover/ig, ''));
         }
       });
     } catch (_) {}
+  }
+
+  function openDb() {
+    return new Promise(function (resolve, reject) {
+      if (!('indexedDB' in window)) return reject(new Error('IndexedDB unavailable'));
+      var req = indexedDB.open(DB_NAME, DB_VERSION);
+      req.onupgradeneeded = function () {
+        if (!req.result.objectStoreNames.contains(STORE)) req.result.createObjectStore(STORE);
+      };
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { reject(req.error || new Error('IndexedDB open failed')); };
+    });
+  }
+
+  function dbGet(key) {
+    return openDb().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction(STORE, 'readonly');
+        var req = tx.objectStore(STORE).get(key);
+        req.onsuccess = function () { resolve(req.result || null); };
+        req.onerror = function () { reject(req.error || new Error('IndexedDB read failed')); };
+        tx.oncomplete = function () { db.close(); };
+      });
+    });
+  }
+
+  function dbPut(key, value) {
+    return openDb().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction(STORE, 'readwrite');
+        tx.objectStore(STORE).put(value, key);
+        tx.oncomplete = function () { db.close(); resolve(); };
+        tx.onerror = function () { reject(tx.error || new Error('IndexedDB write failed')); };
+      });
+    });
+  }
+
+  function dbDelete(key) {
+    return openDb().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction(STORE, 'readwrite');
+        tx.objectStore(STORE).delete(key);
+        tx.oncomplete = function () { db.close(); resolve(); };
+        tx.onerror = function () { reject(tx.error || new Error('IndexedDB delete failed')); };
+      });
+    });
+  }
+
+  function restoreCachedApp() {
+    if (restoring || !document.body) return Promise.resolve(false);
+    restoring = true;
+    return dbGet('active').then(function (record) {
+      if (!record || !record.build || !record.html) return false;
+      var current = String(window.__RESUMATE_BUNDLED_BUILD__ || '');
+      if (current === String(record.build)) return false;
+      var html = String(record.html);
+      html = html.replace(/<script\\b[^>]*src=["'][^"']*resumate-ota-loader\\.js(?:\\?[^"']*)?["'][^>]*>\\s*<\\/script>/gi, '');
+      html = injectBuildMarker(html, record.build);
+      var remoteBase = '<base href="' + BASE + '">';
+      if (!/<base\\s/i.test(html)) html = html.replace(/<head([^>]*)>/i, '<head$1>' + remoteBase);
+      var loaderTag = '<script src="' + BASE + 'resumate-ota-loader.js?v=' + encodeURIComponent(record.build) + '" defer></script>';
+      if (/<\\/body>/i.test(html)) html = html.replace(/<\\/body>/i, loaderTag + '\\n</body>');
+      else html += loaderTag;
+      startingBuild = String(record.build);
+      document.open();
+      document.write(html);
+      document.close();
+      applyUiChromeFix();
+      return true;
+    }).catch(function () { return false; }).finally(function () { restoring = false; });
   }
 
   function mark(status, detail) {
@@ -117,7 +191,7 @@
 
   function injectBuildMarker(html, build) {
     var marker = '<script>window.__RESUMATE_BUNDLED_BUILD__=' + JSON.stringify(String(build)) + ';</script>';
-    html = html.replace(/<script[^>]*>\s*window\.__RESUMATE_BUNDLED_BUILD__\s*=.*?<\/script>/gis, '');
+    html = html.replace(/<script[^>]*>\\s*window\\.__RESUMATE_BUNDLED_BUILD__\\s*=.*?<\\/script>/gis, '');
     if (/<head[^>]*>/i.test(html)) return html.replace(/<head([^>]*)>/i, '<head$1>' + marker);
     return marker + html;
   }
@@ -132,12 +206,13 @@
         return r.text();
       })
       .then(function (html) {
-        html = html.replace(/<script\b[^>]*src=["'][^"']*resumate-ota-loader\.js(?:\?[^"']*)?["'][^>]*>\s*<\/script>/gi, '');
+        dbPut('active', { build: String(build), html: html, savedAt: Date.now() }).catch(function () {});
+        html = html.replace(/<script\\b[^>]*src=["'][^"']*resumate-ota-loader\\.js(?:\\?[^"']*)?["'][^>]*>\\s*<\\/script>/gi, '');
         html = injectBuildMarker(html, build);
         var remoteBase = '<base href="' + BASE + '">';
-        if (!/<base\s/i.test(html)) html = html.replace(/<head([^>]*)>/i, '<head$1>' + remoteBase);
+        if (!/<base\\s/i.test(html)) html = html.replace(/<head([^>]*)>/i, '<head$1>' + remoteBase);
         var loaderTag = '<script src="' + BASE + 'resumate-ota-loader.js?v=' + encodeURIComponent(build) + '" defer></script>';
-        if (/<\/body>/i.test(html)) html = html.replace(/<\/body>/i, loaderTag + '\n</body>');
+        if (/<\\/body>/i.test(html)) html = html.replace(/<\\/body>/i, loaderTag + '\\n</body>');
         else html += loaderTag;
         document.open();
         document.write(html);
@@ -194,7 +269,10 @@
 
   function start() {
     applyUiChromeFix();
-    check(true);
+    restoreCachedApp().then(function (restored) {
+      if (restored) return;
+      check(true);
+    });
     setInterval(function () { check(false); }, POLL_MS);
     document.addEventListener('visibilitychange', function () { if (!document.hidden) check(false); });
     window.addEventListener('online', function () { check(false); });
