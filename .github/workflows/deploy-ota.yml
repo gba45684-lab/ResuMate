@@ -4,9 +4,9 @@ on:
   push:
     branches: [main]
     paths:
+      - 'www/index.html'
+      - 'www/**'
       - 'ota/**'
-      - 'www/resumate-ota-loader.js'
-      - 'scripts/prepare-web.mjs'
       - '.github/workflows/deploy-ota.yml'
   workflow_dispatch:
 
@@ -34,14 +34,27 @@ jobs:
 
       - name: Prepare OTA package
         shell: bash
+        env:
+          BUILD_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          test -f ota/index.html
-          test -f ota/version.json
+          test -f www/index.html
           test -f ota/resumate-runtime.js
           mkdir -p _site
-          cp -R ota/. _site/
-          printf '%s\n' 'OTA package prepared.'
+          cp www/index.html _site/app.html
+          cp ota/resumate-runtime.js _site/resumate-runtime.js
+          cat > _site/index.html <<'EOF'
+          <!doctype html>
+          <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ResuMate OTA</title></head><body><p>ResuMate OTA service is active.</p></body></html>
+          EOF
+          python3 - <<'PY'
+          import json, os
+          sha=os.environ['BUILD_SHA']
+          with open('_site/version.json','w',encoding='utf-8') as f:
+              json.dump({'enabled': True, 'version': sha[:12], 'build': sha, 'channel': 'stable'}, f, separators=(',', ':'))
+              f.write('\n')
+          PY
+          printf '%s\n' 'Full ResuMate OTA package prepared.'
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v4
