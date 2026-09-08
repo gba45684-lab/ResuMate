@@ -94,7 +94,8 @@
         '[id="status-bar"], [id="statusBar"], [id="app-status-bar"], [id="top-status-bar"],',
         '[class~="status-bar"], [class~="statusBar"], [class~="app-status-bar"], [class~="top-status-bar"],',
         '[data-status-bar] { display: none !important; }',
-        '[style*="safe-area-inset-top"] { padding-top: 0 !important; margin-top: 0 !important; }'
+        '[style*="safe-area-inset-top"] { padding-top: 0 !important; margin-top: 0 !important; }',
+        '#resumate-ota-control { display:none !important; visibility:hidden !important; pointer-events:none !important; }'
       ].join('\n');
       (document.head || document.documentElement).appendChild(style);
       document.querySelectorAll('meta[name="viewport"]').forEach(function (meta) {
@@ -420,6 +421,7 @@
     check: check,
     setEnabled: setEnabled,
     isEnabled: isEnabled,
+    testRing: ring,
     update: function () { return pendingBuild ? loadRemoteApp(pendingBuild) : Promise.resolve(); },
     status: function () { return window.__RESUMATE_OTA__ || null; }
   };
