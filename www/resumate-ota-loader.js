@@ -2,9 +2,9 @@
 (function () {
   'use strict';
 
-  var BASE = 'https://gba45684-lab.github.io/ResuMate/';
-  var INDEX_URL = BASE + 'app.html';
-  var VERSION_URL = BASE + 'version.json';
+  var BASE = 'https://raw.githubusercontent.com/gba45684-lab/ResuMate/main/www/';
+  var INDEX_URL = BASE + 'index.html';
+  var VERSION_URL = 'https://raw.githubusercontent.com/gba45684-lab/ResuMate/main/ota/version.json';
   var POLL_MS = 3000;
   var startingBuild = null;
   var reloading = false;
@@ -26,12 +26,14 @@
         return r.text();
       })
       .then(function (html) {
+        html = html.replace(/<script[^>]+resumate-ota-loader\\.js[^>]*><\\/script>/gi, '');
         var remoteBase = '<base href="' + BASE + '">';
         if (!/<base\s/i.test(html)) html = html.replace(/<head([^>]*)>/i, '<head$1>' + remoteBase);
         document.open();
         document.write(html);
         document.close();
         reloading = false;
+        mark('updated', String(build));
       })
       .catch(function (error) {
         reloading = false;
