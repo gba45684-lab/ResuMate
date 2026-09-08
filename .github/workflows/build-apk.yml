@@ -3,8 +3,15 @@ name: ResuMate Android APK
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - 'ota/**'
+    paths:
+      - 'www/**'
+      - 'ota/resumate-runtime.js'
+      - 'plugins/**'
+      - 'android/**'
+      - 'capacitor.config.*'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'scripts/**'
   workflow_dispatch:
 
 permissions:
@@ -12,7 +19,7 @@ permissions:
 
 concurrency:
   group: resumate-android-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   RESUMATE_BUILD: ${{ github.sha }}
