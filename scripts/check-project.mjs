@@ -20,8 +20,13 @@ if (!loader.includes('resumate:ota-status')) throw new Error('OTA status event m
 if (!loader.includes('resumate-ota-update-toggle')) throw new Error('OTA update control missing');
 if (!loader.includes('navigator.vibrate')) throw new Error('OTA haptic feedback missing');
 if (!loader.includes('new Notification')) throw new Error('OTA notification support missing');
-if (!loader.includes('cache: \'no-store\'')) throw new Error('OTA cache-bypass missing');
-if (!loader.includes('resumate-ota-loader\\.js')) throw new Error('OTA loader replacement guard missing');
+if (!loader.includes("cache: 'no-store'")) throw new Error('OTA cache-bypass missing');
+if (!/resumate-ota-loader\\.js/.test(loader)) throw new Error('OTA loader replacement guard missing');
+if (!loader.includes("DB_NAME = 'resumate-ota'")) throw new Error('OTA persistence database missing');
+if (!loader.includes("dbGet('active')")) throw new Error('OTA restore path missing');
+if (!loader.includes("dbPut('active'")) throw new Error('OTA persistence write missing');
+if (!loader.includes('if (restoring) return;')) throw new Error('OTA startup restore gate missing');
+if (!loader.includes('setInterval(function () { check(false); }, POLL_MS)')) throw new Error('OTA polling missing');
 if (!runtime.includes('local-first')) throw new Error('Free-first AI runtime missing');
 if (!runtime.includes('function analyze')) throw new Error('ATS analysis missing');
 if (!runtime.includes('function matchJob')) throw new Error('Job matching missing');
