@@ -17,6 +17,8 @@
   var DB_VERSION = 1;
   var STORE = 'app';
   var OTA_ENABLED_KEY = 'resumate.ota.enabled';
+  var OTA_POS_KEY = 'resumate.ota.position';
+  var OTA_MIN_KEY = 'resumate.ota.minimized';
 
   function isEnabled() {
     try { localStorage.setItem(OTA_ENABLED_KEY, 'true'); } catch (_) {}
@@ -149,6 +151,100 @@
     } catch (_) {}
   }
 
+  function readOtaPosition() {
+    try {
+      var raw = localStorage.getItem(OTA_POS_KEY);
+      if (!raw) return null;
+      var pos = JSON.parse(raw);
+      if (typeof pos.x !== 'number' || typeof pos.y !== 'number') return null;
+      return pos;
+    } catch (_) { return null; }
+  }
+
+  function saveOtaPosition(x, y) {
+    try { localStorage.setItem(OTA_POS_KEY, JSON.stringify({ x: Math.round(x), y: Math.round(y) })); } catch (_) {}
+  }
+
+  function isMinimized() {
+    try { return localStorage.getItem(OTA_MIN_KEY) === 'true'; } catch (_) { return false; }
+  }
+
+  function setMinimized(value) {
+    try { localStorage.setItem(OTA_MIN_KEY, value ? 'true' : 'false'); } catch (_) {}
+    ensureOtaControl(true);
+  }
+
+  function clampOtaPosition(x, y) {
+    var w = otaControl ? otaControl.offsetWidth || 88 : 88;
+    var h = otaControl ? otaControl.offsetHeight || 38 : 38;
+    var maxX = Math.max(0, window.innerWidth - w - 6);
+    var maxY = Math.max(0, window.innerHeight - h - 6);
+    return { x: Math.min(Math.max(6, x), maxX), y: Math.min(Math.max(6, y), maxY) };
+  }
+
+  function applyOtaPosition() {
+    if (!otaControl) return;
+    var saved = readOtaPosition();
+    if (saved) {
+      var p = clampOtaPosition(saved.x, saved.y);
+      otaControl.style.left = p.x + 'px';
+      otaControl.style.top = p.y + 'px';
+      otaControl.style.right = 'auto';
+      otaControl.style.bottom = 'auto';
+    } else {
+      otaControl.style.left = 'auto';
+      otaControl.style.top = 'auto';
+      otaControl.style.right = '12px';
+      otaControl.style.bottom = 'calc(12px + env(safe-area-inset-bottom))';
+    }
+  }
+
+  function wireOtaDragging() {
+    if (!otaControl || otaControl.__dragWired) return;
+    otaControl.__dragWired = true;
+    otaControl.style.touchAction = 'none';
+    var dragging = false, moved = false, startX = 0, startY = 0, baseX = 0, baseY = 0;
+
+    otaControl.addEventListener('pointerdown', function (event) {
+      if (event.target && (event.target.closest('button') || event.target.closest('input'))) return;
+      var rect = otaControl.getBoundingClientRect();
+      dragging = true;
+      moved = false;
+      startX = event.clientX;
+      startY = event.clientY;
+      baseX = rect.left;
+      baseY = rect.top;
+      try { otaControl.setPointerCapture(event.pointerId); } catch (_) {}
+      event.preventDefault();
+    });
+
+    otaControl.addEventListener('pointermove', function (event) {
+      if (!dragging) return;
+      var dx = event.clientX - startX;
+      var dy = event.clientY - startY;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) moved = true;
+      var p = clampOtaPosition(baseX + dx, baseY + dy);
+      otaControl.style.left = p.x + 'px';
+      otaControl.style.top = p.y + 'px';
+      otaControl.style.right = 'auto';
+      otaControl.style.bottom = 'auto';
+      event.preventDefault();
+    });
+
+    otaControl.addEventListener('pointerup', function (event) {
+      if (!dragging) return;
+      dragging = false;
+      var rect = otaControl.getBoundingClientRect();
+      saveOtaPosition(rect.left, rect.top);
+      try { otaControl.releasePointerCapture(event.pointerId); } catch (_) {}
+      if (moved) {
+        try { event.stopPropagation(); } catch (_) {}
+      }
+    });
+
+    otaControl.addEventListener('pointercancel', function () { dragging = false; });
+  }
+
   function ensureOtaControl(force) {
     if (!document.body) return;
     try {
@@ -159,12 +255,26 @@
         otaControl.id = 'resumate-ota-control';
         otaControl.setAttribute('role', 'group');
         otaControl.setAttribute('aria-label', 'OTA updates');
-        otaControl.style.cssText = 'position:fixed;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:2147483647;background:rgba(17,17,17,.97);color:#fff;padding:7px 9px 7px 11px;border-radius:999px;box-shadow:0 4px 18px rgba(0,0,0,.30);font:600 12px system-ui,-apple-system,Segoe UI,sans-serif;display:flex;align-items:center;gap:8px;backdrop-filter:blur(8px);pointer-events:auto;visibility:visible;opacity:1;';
+        otaControl.style.cssText = 'position:fixed;z-index:2147483647;background:rgba(17,17,17,.97);color:#fff;padding:7px 9px 7px 11px;border-radius:999px;box-shadow:0 4px 18px rgba(0,0,0,.30);font:600 12px system-ui,-apple-system,Segoe UI,sans-serif;display:flex;align-items:center;gap:7px;backdrop-filter:blur(8px);pointer-events:auto;visibility:visible;opacity:1;user-select:none;max-width:calc(100vw - 12px);box-sizing:border-box;';
         document.body.appendChild(otaControl);
       }
       if (force || !otaControl.querySelector('#resumate-ota-enabled')) {
-        otaControl.innerHTML = '<span style="user-select:none">OTA</span><label style="display:flex;align-items:center;gap:5px;cursor:default"><input id="resumate-ota-enabled" type="checkbox" aria-label="OTA updates are always enabled" checked disabled style="width:16px;height:16px;margin:0;accent-color:#fff"><span id="resumate-ota-state">ON</span><span style="font-size:10px;opacity:.72;user-select:none">Always on</span></label>';
+        if (isMinimized()) {
+          otaControl.innerHTML = '<span id="resumate-ota-restore" role="button" tabindex="0" aria-label="Restore OTA control" style="display:inline-flex;align-items:center;justify-content:center;min-width:36px;height:24px;padding:0 7px;border-radius:999px;cursor:pointer;background:#fff;color:#111;font-weight:800;">OTA</span>';
+          var restore = otaControl.querySelector('#resumate-ota-restore');
+          if (restore) {
+            var restoreOta = function () { setMinimized(false); };
+            restore.addEventListener('click', restoreOta);
+            restore.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); restoreOta(); } });
+          }
+        } else {
+          otaControl.innerHTML = '<span id="resumate-ota-drag" title="Drag anywhere" style="user-select:none;cursor:grab;">OTA</span><label style="display:flex;align-items:center;gap:5px;cursor:default"><input id="resumate-ota-enabled" type="checkbox" aria-label="OTA updates are always enabled" checked disabled style="width:16px;height:16px;margin:0;accent-color:#fff"><span id="resumate-ota-state">ON</span><span style="font-size:10px;opacity:.72;user-select:none">Always on</span></label><button id="resumate-ota-minimize" type="button" aria-label="Minimize OTA control" title="Minimize" style="appearance:none;border:0;background:transparent;color:#fff;font-size:15px;line-height:1;padding:1px 2px;cursor:pointer;">−</button>';
+          var minimize = otaControl.querySelector('#resumate-ota-minimize');
+          if (minimize) minimize.addEventListener('click', function (event) { event.stopPropagation(); setMinimized(true); });
+        }
       }
+      applyOtaPosition();
+      wireOtaDragging();
       if (!controlObserver && window.MutationObserver) {
         controlObserver = new MutationObserver(function () {
           if (!document.getElementById('resumate-ota-control')) {
@@ -255,6 +365,7 @@
       document.addEventListener('visibilitychange', function () { if (!document.hidden) { ensureOtaControl(); check(); } });
       window.addEventListener('online', check);
       window.addEventListener('pageshow', function () { ensureOtaControl(true); });
+      window.addEventListener('resize', function () { applyOtaPosition(); });
     });
   }
 
