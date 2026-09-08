@@ -2,9 +2,8 @@
 (function () {
   'use strict';
 
-  var BASE = 'https://raw.githubusercontent.com/gba45684-lab/ResuMate/main/www/';
-  var INDEX_URL = BASE + 'index.html';
-  var VERSION_URL = 'https://raw.githubusercontent.com/gba45684-lab/ResuMate/main/ota/version.json';
+  var RAW_ROOT = 'https://raw.githubusercontent.com/gba45684-lab/ResuMate/';
+  var VERSION_URL = RAW_ROOT + 'main/ota/version.json';
   var POLL_MS = 3000;
   var startingBuild = window.__RESUMATE_BUNDLED_BUILD__ || null;
   var pendingBuild = null;
@@ -15,6 +14,10 @@
   var DB_NAME = 'resumate-ota';
   var DB_VERSION = 1;
   var STORE = 'app';
+
+  function buildBase(build) { return RAW_ROOT + encodeURIComponent(String(build)) + '/www/'; }
+  function buildIndex(build) { return buildBase(build) + 'index.html'; }
+  function buildLoader(build) { return buildBase(build) + 'resumate-ota-loader.js?v=' + encodeURIComponent(String(build)); }
 
   function applyUiChromeFix() {
     try {
@@ -32,12 +35,9 @@
         'body > :first-child { margin-top: 0 !important; }'
       ].join('\\n');
       (document.head || document.documentElement).appendChild(style);
-      var metas = document.querySelectorAll('meta[name="viewport"]');
-      metas.forEach(function (meta) {
+      document.querySelectorAll('meta[name="viewport"]').forEach(function (meta) {
         var content = meta.getAttribute('content') || '';
-        if (/viewport-fit\\s*=\\s*cover/i.test(content)) {
-          meta.setAttribute('content', content.replace(/,?\\s*viewport-fit\\s*=\\s*cover/ig, ''));
-        }
+        if (/viewport-fit\\s*=\\s*cover/i.test(content)) meta.setAttribute('content', content.replace(/,?\\s*viewport-fit\\s*=\\s*cover/ig, ''));
       });
     } catch (_) {}
   }
@@ -46,46 +46,41 @@
     return new Promise(function (resolve, reject) {
       if (!('indexedDB' in window)) return reject(new Error('IndexedDB unavailable'));
       var req = indexedDB.open(DB_NAME, DB_VERSION);
-      req.onupgradeneeded = function () {
-        if (!req.result.objectStoreNames.contains(STORE)) req.result.createObjectStore(STORE);
-      };
+      req.onupgradeneeded = function () { if (!req.result.objectStoreNames.contains(STORE)) req.result.createObjectStore(STORE); };
       req.onsuccess = function () { resolve(req.result); };
       req.onerror = function () { reject(req.error || new Error('IndexedDB open failed')); };
     });
   }
-
   function dbGet(key) {
-    return openDb().then(function (db) {
-      return new Promise(function (resolve, reject) {
-        var tx = db.transaction(STORE, 'readonly');
-        var req = tx.objectStore(STORE).get(key);
-        req.onsuccess = function () { resolve(req.result || null); };
-        req.onerror = function () { reject(req.error || new Error('IndexedDB read failed')); };
-        tx.oncomplete = function () { db.close(); };
-      });
-    });
+    return openDb().then(function (db) { return new Promise(function (resolve, reject) {
+      var tx = db.transaction(STORE, 'readonly'), req = tx.objectStore(STORE).get(key);
+      req.onsuccess = function () { resolve(req.result || null); };
+      req.onerror = function () { reject(req.error || new Error('IndexedDB read failed')); };
+      tx.oncomplete = function () { db.close(); };
+    }); });
   }
-
   function dbPut(key, value) {
-    return openDb().then(function (db) {
-      return new Promise(function (resolve, reject) {
-        var tx = db.transaction(STORE, 'readwrite');
-        tx.objectStore(STORE).put(value, key);
-        tx.oncomplete = function () { db.close(); resolve(); };
-        tx.onerror = function () { reject(tx.error || new Error('IndexedDB write failed')); };
-      });
-    });
+    return openDb().then(function (db) { return new Promise(function (resolve, reject) {
+      var tx = db.transaction(STORE, 'readwrite');
+      tx.objectStore(STORE).put(value, key);
+      tx.oncomplete = function () { db.close(); resolve(); };
+      tx.onerror = function () { reject(tx.error || new Error('IndexedDB write failed')); };
+    }); });
   }
 
-  function dbDelete(key) {
-    return openDb().then(function (db) {
-      return new Promise(function (resolve, reject) {
-        var tx = db.transaction(STORE, 'readwrite');
-        tx.objectStore(STORE).delete(key);
-        tx.oncomplete = function () { db.close(); resolve(); };
-        tx.onerror = function () { reject(tx.error || new Error('IndexedDB delete failed')); };
-      });
-    });
+  function injectBuildMarker(html, build) {
+    var marker = '<script>window.__RESUMATE_BUNDLED_BUILD__=' + JSON.stringify(String(build)) + ';</script>';
+    html = html.replace(/<script[^>]*>\\s*window\\.__RESUMATE_BUNDLED_BUILD__\\s*=.*?<\\/script>/gis, '');
+    return /<head[^>]*>/i.test(html) ? html.replace(/<head([^>]*)>/i, '<head$1>' + marker) : marker + html;
+  }
+
+  function prepareRemoteHtml(html, build) {
+    html = String(html).replace(/<script\\b[^>]*src=["'][^"']*resumate-ota-loader\\.js(?:\\?[^"']*)?["'][^>]*>\\s*<\\/script>/gi, '');
+    html = injectBuildMarker(html, build);
+    var base = buildBase(build);
+    if (!/<base\\s/i.test(html)) html = html.replace(/<head([^>]*)>/i, '<head$1><base href="' + base + '">');
+    var tag = '<script src="' + buildLoader(build) + '" defer></script>';
+    return /<\\/body>/i.test(html) ? html.replace(/<\\/body>/i, tag + '\\n</body>') : html + tag;
   }
 
   function restoreCachedApp() {
@@ -95,17 +90,9 @@
       if (!record || !record.build || !record.html) return false;
       var current = String(window.__RESUMATE_BUNDLED_BUILD__ || '');
       if (current === String(record.build)) return false;
-      var html = String(record.html);
-      html = html.replace(/<script\\b[^>]*src=["'][^"']*resumate-ota-loader\\.js(?:\\?[^"']*)?["'][^>]*>\\s*<\\/script>/gi, '');
-      html = injectBuildMarker(html, record.build);
-      var remoteBase = '<base href="' + BASE + '">';
-      if (!/<base\\s/i.test(html)) html = html.replace(/<head([^>]*)>/i, '<head$1>' + remoteBase);
-      var loaderTag = '<script src="' + BASE + 'resumate-ota-loader.js?v=' + encodeURIComponent(record.build) + '" defer></script>';
-      if (/<\\/body>/i.test(html)) html = html.replace(/<\\/body>/i, loaderTag + '\\n</body>');
-      else html += loaderTag;
       startingBuild = String(record.build);
       document.open();
-      document.write(html);
+      document.write(prepareRemoteHtml(record.html, startingBuild));
       document.close();
       applyUiChromeFix();
       return true;
@@ -128,26 +115,20 @@
       if (audioContext.state === 'suspended') audioContext.resume().catch(function () {});
       var now = audioContext.currentTime;
       [0, 0.22].forEach(function (offset) {
-        var osc = audioContext.createOscillator();
-        var gain = audioContext.createGain();
-        osc.type = 'sine';
-        osc.frequency.value = offset ? 880 : 660;
+        var osc = audioContext.createOscillator(), gain = audioContext.createGain();
+        osc.type = 'sine'; osc.frequency.value = offset ? 880 : 660;
         gain.gain.setValueAtTime(0.0001, now + offset);
         gain.gain.exponentialRampToValueAtTime(0.16, now + offset + 0.015);
         gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.16);
-        osc.connect(gain);
-        gain.connect(audioContext.destination);
-        osc.start(now + offset);
-        osc.stop(now + offset + 0.18);
+        osc.connect(gain); gain.connect(audioContext.destination);
+        osc.start(now + offset); osc.stop(now + offset + 0.18);
       });
     } catch (_) {}
   }
 
   function notifyNativeOrWeb() {
     try {
-      if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification('ResuMate update available', { body: 'A new ResuMate version is ready. Tap Update to apply it.' });
-      }
+      if ('Notification' in window && Notification.permission === 'granted') new Notification('ResuMate update available', { body: 'A new ResuMate version is ready. Tap Update to apply it.' });
     } catch (_) {}
   }
 
@@ -155,7 +136,6 @@
     pendingBuild = String(build);
     mark('update-available', pendingBuild);
     if (banner || !document.body) return;
-
     banner = document.createElement('div');
     banner.id = 'resumate-ota-update-banner';
     banner.setAttribute('role', 'alert');
@@ -163,120 +143,60 @@
       '<div style="font-size:12px;opacity:.82;margin-bottom:10px">Update now to get the latest improvements.</div>' +
       '<div style="display:flex;align-items:center;gap:10px">' +
       '<button id="resumate-ota-update-toggle" type="button" aria-pressed="false" style="appearance:none;border:0;border-radius:999px;padding:9px 15px;font-weight:700;cursor:pointer">Update now</button>' +
-      '<button id="resumate-ota-dismiss" type="button" style="background:transparent;border:0;color:inherit;opacity:.75;padding:6px;cursor:pointer">Later</button>' +
-      '</div>';
+      '<button id="resumate-ota-dismiss" type="button" style="background:transparent;border:0;color:inherit;opacity:.75;padding:6px;cursor:pointer">Later</button></div>';
     banner.style.cssText = 'position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:2147483647;background:#111;color:#fff;padding:14px 16px;border-radius:14px;box-shadow:0 8px 30px rgba(0,0,0,.28);font-family:system-ui,-apple-system,Segoe UI,sans-serif;box-sizing:border-box;';
     document.body.appendChild(banner);
-
-    var updateButton = document.getElementById('resumate-ota-update-toggle');
-    var laterButton = document.getElementById('resumate-ota-dismiss');
+    var updateButton = document.getElementById('resumate-ota-update-toggle'), laterButton = document.getElementById('resumate-ota-dismiss');
     if (updateButton) updateButton.addEventListener('click', function () {
-      updateButton.setAttribute('aria-pressed', 'true');
-      updateButton.textContent = 'Updating…';
-      updateButton.disabled = true;
-      loadRemoteApp(pendingBuild).catch(function () {
-        updateButton.disabled = false;
-        updateButton.textContent = 'Retry update';
-      });
+      updateButton.setAttribute('aria-pressed', 'true'); updateButton.textContent = 'Updating…'; updateButton.disabled = true;
+      loadRemoteApp(pendingBuild).catch(function () { updateButton.disabled = false; updateButton.textContent = 'Retry update'; });
     });
-    if (laterButton) laterButton.addEventListener('click', function () {
-      if (banner && banner.parentNode) banner.parentNode.removeChild(banner);
-      banner = null;
-      mark('update-pending', pendingBuild);
-    });
-
-    ring();
-    notifyNativeOrWeb();
-  }
-
-  function injectBuildMarker(html, build) {
-    var marker = '<script>window.__RESUMATE_BUNDLED_BUILD__=' + JSON.stringify(String(build)) + ';</script>';
-    html = html.replace(/<script[^>]*>\\s*window\\.__RESUMATE_BUNDLED_BUILD__\\s*=.*?<\\/script>/gis, '');
-    if (/<head[^>]*>/i.test(html)) return html.replace(/<head([^>]*)>/i, '<head$1>' + marker);
-    return marker + html;
+    if (laterButton) laterButton.addEventListener('click', function () { if (banner && banner.parentNode) banner.parentNode.removeChild(banner); banner = null; mark('update-pending', pendingBuild); });
+    ring(); notifyNativeOrWeb();
   }
 
   function loadRemoteApp(build) {
     if (reloading) return Promise.resolve();
     reloading = true;
-    mark('loading', String(build));
-    return fetch(INDEX_URL + '?v=' + encodeURIComponent(build || Date.now()), { cache: 'no-store', credentials: 'omit' })
-      .then(function (r) {
-        if (!r.ok) throw new Error('remote app HTTP ' + r.status);
-        return r.text();
-      })
+    var target = String(build);
+    mark('loading', target);
+    return fetch(buildIndex(target) + '?v=' + encodeURIComponent(target), { cache: 'no-store', credentials: 'omit' })
+      .then(function (r) { if (!r.ok) throw new Error('remote app HTTP ' + r.status); return r.text(); })
       .then(function (html) {
-        return dbPut('active', { build: String(build), html: html, savedAt: Date.now() }).then(function () {
-          html = html.replace(/<script\\b[^>]*src=["'][^"']*resumate-ota-loader\\.js(?:\\?[^"']*)?["'][^>]*>\\s*<\\/script>/gi, '');
-          html = injectBuildMarker(html, build);
-          var remoteBase = '<base href="' + BASE + '">';
-          if (!/<base\\s/i.test(html)) html = html.replace(/<head([^>]*)>/i, '<head$1>' + remoteBase);
-          var loaderTag = '<script src="' + BASE + 'resumate-ota-loader.js?v=' + encodeURIComponent(build) + '" defer></script>';
-          if (/<\\/body>/i.test(html)) html = html.replace(/<\\/body>/i, loaderTag + '\\n</body>');
-          else html += loaderTag;
-          document.open();
-          document.write(html);
-          document.close();
-          reloading = false;
-          startingBuild = String(build);
-          pendingBuild = null;
-          applyUiChromeFix();
-          mark('updated', String(build));
+        return dbPut('active', { build: target, html: html, savedAt: Date.now() }).then(function () {
+          document.open(); document.write(prepareRemoteHtml(html, target)); document.close();
+          reloading = false; startingBuild = target; pendingBuild = null; applyUiChromeFix(); mark('updated', target);
         });
       })
-      .catch(function (error) {
-        reloading = false;
-        mark('fallback', String(error && error.message || error));
-        throw error;
-      });
+      .catch(function (error) { reloading = false; mark('fallback', String(error && error.message || error)); throw error; });
   }
 
-  function check(initial) {
+  function check() {
     if (restoring) return;
-    if (!navigator.onLine) { applyUiChromeFix(); mark('offline', 'Using bundled application.'); return; }
+    if (!navigator.onLine) { applyUiChromeFix(); mark('offline', 'Using bundled or cached application.'); return; }
     fetch(VERSION_URL + '?t=' + Date.now(), { cache: 'no-store', credentials: 'omit' })
-      .then(function (r) {
-        if (!r.ok) throw new Error('version manifest HTTP ' + r.status);
-        return r.json();
-      })
+      .then(function (r) { if (!r.ok) throw new Error('version manifest HTTP ' + r.status); return r.json(); })
       .then(function (manifest) {
         if (restoring) return;
         if (!manifest || manifest.enabled === false) { applyUiChromeFix(); mark('disabled'); return; }
-        var build = String(manifest.build || manifest.version || Date.now());
-        if (startingBuild === null) {
-          startingBuild = build;
-          applyUiChromeFix();
-          mark('current', build);
-          return;
-        }
-        if (build !== startingBuild) {
-          applyUiChromeFix();
-          showUpdateBanner(build);
-          return;
-        }
-        applyUiChromeFix();
-        mark('current', build);
+        var build = String(manifest.build || manifest.version || '');
+        if (!build) throw new Error('OTA manifest build missing');
+        if (startingBuild === null) startingBuild = build;
+        if (build !== startingBuild) { applyUiChromeFix(); showUpdateBanner(build); return; }
+        applyUiChromeFix(); mark('current', build);
       })
       .catch(function (error) { applyUiChromeFix(); mark('check-failed', String(error && error.message || error)); });
   }
 
-  window.ResuMateOTA = {
-    baseUrl: BASE,
-    versionUrl: VERSION_URL,
-    appUrl: INDEX_URL,
-    pollMs: POLL_MS,
-    check: function () { return check(false); },
-    update: function () { return pendingBuild ? loadRemoteApp(pendingBuild) : Promise.resolve(); },
-    status: function () { return window.__RESUMATE_OTA__ || null; }
-  };
+  window.ResuMateOTA = { baseUrl: RAW_ROOT, versionUrl: VERSION_URL, pollMs: POLL_MS, check: check, update: function () { return pendingBuild ? loadRemoteApp(pendingBuild) : Promise.resolve(); }, status: function () { return window.__RESUMATE_OTA__ || null; } };
 
   function start() {
     applyUiChromeFix();
     restoreCachedApp().then(function (restored) {
-      if (!restored) check(true);
-      setInterval(function () { check(false); }, POLL_MS);
-      document.addEventListener('visibilitychange', function () { if (!document.hidden) check(false); });
-      window.addEventListener('online', function () { check(false); });
+      if (!restored) check();
+      setInterval(check, POLL_MS);
+      document.addEventListener('visibilitychange', function () { if (!document.hidden) check(); });
+      window.addEventListener('online', check);
     });
   }
 
