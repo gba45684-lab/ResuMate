@@ -21,7 +21,7 @@ if (!loader.includes('resumate-ota-update-toggle')) throw new Error('OTA update 
 if (!loader.includes('navigator.vibrate')) throw new Error('OTA haptic feedback missing');
 if (!loader.includes('new Notification')) throw new Error('OTA notification support missing');
 if (!loader.includes("cache: 'no-store'")) throw new Error('OTA cache-bypass missing');
-if (!/resumate-ota-loader\\.js/.test(loader)) throw new Error('OTA loader replacement guard missing');
+if (!loader.includes('resumate-ota-loader.js')) throw new Error('OTA loader replacement guard missing');
 if (!loader.includes("RAW_ROOT = 'https://raw.githubusercontent.com/gba45684-lab/ResuMate/'")) throw new Error('OTA immutable root missing');
 if (!loader.includes('function buildIndex(build)')) throw new Error('OTA commit-pinned index URL missing');
 if (!loader.includes("DB_NAME = 'resumate-ota'")) throw new Error('OTA persistence database missing');
