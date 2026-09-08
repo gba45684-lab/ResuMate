@@ -3,16 +3,19 @@ import { execFileSync } from 'node:child_process';
 
 const entry = 'www/index.html';
 const loader = 'www/resumate-ota-loader.js';
+const downloads = 'www/resumate-downloads.js';
 
 try {
   await access(entry);
   await access(loader);
+  await access(downloads);
 } catch {
-  throw new Error('www/index.html or www/resumate-ota-loader.js is missing');
+  throw new Error('www/index.html, www/resumate-ota-loader.js or www/resumate-downloads.js is missing');
 }
 
 let html = await readFile(entry, 'utf8');
 const marker = 'resumate-ota-loader.js';
+const downloadsMarker = 'resumate-downloads.js';
 
 // CI can explicitly provide the release commit. Local builds fall back to
 // GITHUB_SHA, then the checked-out Git HEAD. This keeps the APK marker aligned
@@ -39,6 +42,15 @@ if (!html.includes(marker)) {
   console.log('Injected stable ResuMate OTA loader.');
 } else {
   console.log('ResuMate OTA loader already present.');
+}
+
+if (!html.includes(downloadsMarker)) {
+  const tag = '<script src="./resumate-downloads.js" defer></script>';
+  if (html.includes('</body>')) html = html.replace('</body>', `${tag}\n</body>`);
+  else html += `\n${tag}\n`;
+  console.log('Injected ResuMate local download manager.');
+} else {
+  console.log('ResuMate local download manager already present.');
 }
 
 await writeFile(entry, html, 'utf8');
