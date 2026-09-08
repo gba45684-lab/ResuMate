@@ -3,8 +3,11 @@ name: ResuMate OTA
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - 'ota/**'
+    paths:
+      - 'www/**'
+      - 'ota/resumate-runtime.js'
+      - 'package.json'
+      - 'package-lock.json'
   workflow_dispatch:
 
 permissions:
@@ -32,7 +35,7 @@ jobs:
           git checkout -B main origin/main
           # The OTA build identity must reference the latest real app/source commit,
           # not an ota/version.json commit created by this workflow.
-          BUILD_SHA="$(git rev-list --max-count=1 HEAD -- . ':(exclude)ota/**')"
+          BUILD_SHA="$(git rev-list --max-count=1 HEAD -- www ota/resumate-runtime.js package.json package-lock.json)"
           if [ -z "$BUILD_SHA" ]; then
             echo 'Unable to resolve source build SHA.'
             exit 1
