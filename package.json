@@ -11,7 +11,8 @@
     "check": "node scripts/check-project.mjs"
   },
   "dependencies": {
-    "@capacitor/core": "^7.4.3"
+    "@capacitor/core": "^7.4.3",
+    "@resumate/notifications": "file:plugins/resumate-notifications"
   },
   "devDependencies": {
     "@capacitor/android": "^7.4.3",
