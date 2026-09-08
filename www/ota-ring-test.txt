@@ -1,0 +1,2 @@
+ResuMate OTA ring test marker
+This file intentionally does not affect the locked UI or runtime.
