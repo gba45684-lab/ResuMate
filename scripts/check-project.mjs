@@ -22,11 +22,14 @@ if (!loader.includes('navigator.vibrate')) throw new Error('OTA haptic feedback 
 if (!loader.includes('new Notification')) throw new Error('OTA notification support missing');
 if (!loader.includes("cache: 'no-store'")) throw new Error('OTA cache-bypass missing');
 if (!/resumate-ota-loader\\.js/.test(loader)) throw new Error('OTA loader replacement guard missing');
+if (!loader.includes("RAW_ROOT = 'https://raw.githubusercontent.com/gba45684-lab/ResuMate/'")) throw new Error('OTA immutable root missing');
+if (!loader.includes('function buildIndex(build)')) throw new Error('OTA commit-pinned index URL missing');
 if (!loader.includes("DB_NAME = 'resumate-ota'")) throw new Error('OTA persistence database missing');
 if (!loader.includes("dbGet('active')")) throw new Error('OTA restore path missing');
 if (!loader.includes("dbPut('active'")) throw new Error('OTA persistence write missing');
 if (!loader.includes('if (restoring) return;')) throw new Error('OTA startup restore gate missing');
-if (!loader.includes('setInterval(function () { check(false); }, POLL_MS)')) throw new Error('OTA polling missing');
+if (!loader.includes('setInterval(check, POLL_MS)')) throw new Error('OTA polling missing');
+if (!loader.includes('restoreCachedApp().then')) throw new Error('OTA startup restore flow missing');
 if (!runtime.includes('local-first')) throw new Error('Free-first AI runtime missing');
 if (!runtime.includes('function analyze')) throw new Error('ATS analysis missing');
 if (!runtime.includes('function matchJob')) throw new Error('Job matching missing');
@@ -35,5 +38,7 @@ if (!runtime.includes('function interview')) throw new Error('Interview coach ru
 if (typeof manifest !== 'object' || manifest === null) throw new Error('Invalid OTA manifest');
 if (manifest.enabled !== true) throw new Error('OTA manifest is not enabled');
 if (!manifest.build || !manifest.version || !manifest.channel) throw new Error('OTA manifest fields missing');
+if (!/^[0-9a-f]{40}$/i.test(String(manifest.build))) throw new Error('OTA manifest build must be a full commit SHA');
+if (String(manifest.version) !== String(manifest.build).slice(0, 12)) throw new Error('OTA manifest version/build mismatch');
 
 console.log(`ResuMate project check passed (${html.length} HTML chars; OTA + AI checks passed).`);
