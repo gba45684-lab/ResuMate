@@ -31,16 +31,20 @@ jobs:
           git fetch origin main
           git checkout -B main origin/main
           BUILD_SHA="$(git rev-parse HEAD)"
-          export BUILD_SHA
+          RELEASE_SUBJECT="$(git log -1 --pretty=%s)"
+          export BUILD_SHA RELEASE_SUBJECT
           python3 - <<'PY'
           import json, os
           sha = os.environ['BUILD_SHA']
+          subject = os.environ.get('RELEASE_SUBJECT', '').strip()
+          notes = [subject] if subject else ['Latest ResuMate improvements and fixes.']
           with open('ota/version.json', 'w', encoding='utf-8') as f:
               json.dump({
                   'enabled': True,
                   'version': sha[:12],
                   'build': sha,
-                  'channel': 'stable'
+                  'channel': 'stable',
+                  'releaseNotes': notes
               }, f, separators=(',', ':'))
               f.write('\n')
           PY
