@@ -6,7 +6,7 @@
   var INDEX_URL = BASE + 'index.html';
   var VERSION_URL = 'https://raw.githubusercontent.com/gba45684-lab/ResuMate/main/ota/version.json';
   var POLL_MS = 3000;
-  var startingBuild = null;
+  var startingBuild = window.__RESUMATE_BUNDLED_BUILD__ || null;
   var pendingBuild = null;
   var reloading = false;
   var banner = null;
@@ -14,15 +14,13 @@
 
   function mark(status, detail) {
     try {
-      window.__RESUMATE_OTA__ = { status: status, detail: detail || '', checkedAt: new Date().toISOString(), pollMs: POLL_MS, pendingBuild: pendingBuild || null };
+      window.__RESUMATE_OTA__ = { status: status, detail: detail || '', checkedAt: new Date().toISOString(), pollMs: POLL_MS, bundledBuild: startingBuild || null, pendingBuild: pendingBuild || null };
       window.dispatchEvent(new CustomEvent('resumate:ota-status', { detail: window.__RESUMATE_OTA__ }));
     } catch (_) {}
   }
 
   function ring() {
-    try {
-      if (navigator.vibrate) navigator.vibrate([120, 70, 120]);
-    } catch (_) {}
+    try { if (navigator.vibrate) navigator.vibrate([120, 70, 120]); } catch (_) {}
     try {
       var AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return;
@@ -49,12 +47,6 @@
     try {
       if ('Notification' in window && Notification.permission === 'granted') {
         new Notification('ResuMate update available', { body: 'A new ResuMate version is ready. Tap Update to apply it.' });
-      } else if ('Notification' in window && Notification.permission === 'default') {
-        Notification.requestPermission().then(function (p) {
-          if (p === 'granted') {
-            try { new Notification('ResuMate update available', { body: 'A new version is ready.' }); } catch (_) {}
-          }
-        }).catch(function () {});
       }
     } catch (_) {}
   }
@@ -97,6 +89,13 @@
     notifyNativeOrWeb();
   }
 
+  function injectBuildMarker(html, build) {
+    var marker = '<script>window.__RESUMATE_BUNDLED_BUILD__=' + JSON.stringify(String(build)) + ';</script>';
+    html = html.replace(/<script[^>]*>\s*window\.__RESUMATE_BUNDLED_BUILD__\s*=.*?<\/script>/gis, '');
+    if (/<head[^>]*>/i.test(html)) return html.replace(/<head([^>]*)>/i, '<head$1>' + marker);
+    return marker + html;
+  }
+
   function loadRemoteApp(build) {
     if (reloading) return Promise.resolve();
     reloading = true;
@@ -107,13 +106,18 @@
         return r.text();
       })
       .then(function (html) {
-        html = html.replace(/<script[^>]+resumate-ota-loader\\.js[^>]*><\\/script>/gi, '');
+        html = html.replace(/<script\b[^>]*src=["'][^"']*resumate-ota-loader\.js(?:\?[^"']*)?["'][^>]*>\s*<\/script>/gi, '');
+        html = injectBuildMarker(html, build);
         var remoteBase = '<base href="' + BASE + '">';
         if (!/<base\s/i.test(html)) html = html.replace(/<head([^>]*)>/i, '<head$1>' + remoteBase);
+        var loaderTag = '<script src="' + BASE + 'resumate-ota-loader.js?v=' + encodeURIComponent(build) + '" defer></script>';
+        if (/<\/body>/i.test(html)) html = html.replace(/<\/body>/i, loaderTag + '\n</body>');
+        else html += loaderTag;
         document.open();
         document.write(html);
         document.close();
         reloading = false;
+        startingBuild = String(build);
         pendingBuild = null;
         mark('updated', String(build));
       })
@@ -136,7 +140,7 @@
         var build = String(manifest.build || manifest.version || Date.now());
         if (startingBuild === null) {
           startingBuild = build;
-          if (initial) return loadRemoteApp(build).catch(function () {});
+          mark('current', build);
           return;
         }
         if (build !== startingBuild) {
