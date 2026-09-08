@@ -21,7 +21,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Publish OTA version manifest
         shell: bash
@@ -59,4 +61,13 @@ jobs:
           test -s www/resumate-ota-loader.js
           test -s ota/resumate-runtime.js
           test -s ota/version.json
-          printf 'OTA payload ready: %s\n' "$(cat ota/version.json)"
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          manifest = json.loads(Path('ota/version.json').read_text(encoding='utf-8'))
+          assert manifest.get('enabled') is True
+          assert manifest.get('channel') == 'stable'
+          assert manifest.get('build')
+          assert manifest.get('version') == manifest['build'][:12]
+          print('OTA payload ready:', json.dumps(manifest, separators=(',', ':')))
+          PY
