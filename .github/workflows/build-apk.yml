@@ -21,13 +21,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
 
       - name: Install dependencies
         run: npm install
 
       - name: Restructure uploaded ZIP
-        id: restructure
         shell: bash
         run: |
           set -euo pipefail
@@ -46,7 +44,7 @@ jobs:
               cp .resumate-extracted/www/index.html www/index.html
             else
               echo 'No supported ResuMate HTML entry point found in ZIP.'
-              find .resumate-extracted -maxdepth 3 -type f -print
+              find .resumate-extracted -maxdepth 4 -type f -print
               exit 1
             fi
             rm -rf .resumate-extracted ResuMate.zip
