@@ -1,85 +1,84 @@
-/* ResuMate stable OTA loader. This file is bundled once into the APK.
- * Future web/runtime changes are delivered from GitHub Pages without rebuilding the APK.
- * No API keys or resume data are sent by this loader.
- */
+/* ResuMate full-app OTA loader. Bundled once into the APK. */
 (function () {
   'use strict';
 
   var BASE = 'https://gba45684-lab.github.io/ResuMate/';
+  var INDEX_URL = BASE + 'index.html';
   var VERSION_URL = BASE + 'version.json';
-  var RUNTIME_URL = BASE + 'resumate-runtime.js';
-  var LOADER_VERSION = '1.0.0';
+  var POLL_MS = 3000;
+  var startingBuild = null;
+  var reloading = false;
 
   function mark(status, detail) {
     try {
-      window.__RESUMATE_OTA__ = {
-        status: status,
-        detail: detail || '',
-        loaderVersion: LOADER_VERSION,
-        checkedAt: new Date().toISOString()
-      };
-      window.dispatchEvent(new CustomEvent('resumate:ota-status', {
-        detail: window.__RESUMATE_OTA__
-      }));
+      window.__RESUMATE_OTA__ = { status: status, detail: detail || '', checkedAt: new Date().toISOString(), pollMs: POLL_MS };
+      window.dispatchEvent(new CustomEvent('resumate:ota-status', { detail: window.__RESUMATE_OTA__ }));
     } catch (_) {}
   }
 
-  function loadRuntime(version) {
-    return new Promise(function (resolve, reject) {
-      var script = document.createElement('script');
-      script.src = RUNTIME_URL + '?v=' + encodeURIComponent(version || Date.now());
-      script.async = true;
-      script.dataset.resumateOta = 'runtime';
-      script.onload = function () {
-        mark('loaded', version || 'latest');
-        resolve();
-      };
-      script.onerror = function () {
-        mark('fallback', 'Remote runtime unavailable; bundled app remains active.');
-        reject(new Error('OTA runtime unavailable'));
-      };
-      document.head.appendChild(script);
-    });
-  }
-
-  function check() {
-    mark('checking');
-    if (!navigator.onLine) {
-      mark('offline', 'Offline; using bundled application.');
-      return;
-    }
-
-    fetch(VERSION_URL + '?t=' + Date.now(), {
-      cache: 'no-store',
-      credentials: 'omit'
-    })
-      .then(function (response) {
-        if (!response.ok) throw new Error('version manifest HTTP ' + response.status);
-        return response.json();
+  function loadRemoteApp(build) {
+    if (reloading) return Promise.resolve();
+    reloading = true;
+    mark('loading', String(build));
+    return fetch(INDEX_URL + '?v=' + encodeURIComponent(build || Date.now()), { cache: 'no-store', credentials: 'omit' })
+      .then(function (r) {
+        if (!r.ok) throw new Error('remote app HTTP ' + r.status);
+        return r.text();
       })
-      .then(function (manifest) {
-        if (!manifest || manifest.enabled === false) {
-          mark('disabled');
-          return;
-        }
-        return loadRuntime(manifest.build || manifest.version || Date.now());
+      .then(function (html) {
+        var remoteBase = '<base href="' + BASE + '">';
+        if (!/<base\s/i.test(html)) html = html.replace(/<head([^>]*)>/i, '<head$1>' + remoteBase);
+        html = html.replace(/<script[^>]+resumate-ota-loader\.js[^>]*><\/script>/gi, '');
+        document.open();
+        document.write(html);
+        document.close();
+        reloading = false;
+        mark('updated', String(build));
       })
       .catch(function (error) {
+        reloading = false;
         mark('fallback', String(error && error.message || error));
+        throw error;
       });
+  }
+
+  function check(initial) {
+    if (!navigator.onLine) { mark('offline', 'Using bundled application.'); return; }
+    fetch(VERSION_URL + '?t=' + Date.now(), { cache: 'no-store', credentials: 'omit' })
+      .then(function (r) {
+        if (!r.ok) throw new Error('version manifest HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function (manifest) {
+        if (!manifest || manifest.enabled === false) { mark('disabled'); return; }
+        var build = String(manifest.build || manifest.version || Date.now());
+        if (startingBuild === null) {
+          startingBuild = build;
+          if (initial) return loadRemoteApp(build).catch(function () {});
+          return;
+        }
+        if (build !== startingBuild) {
+          startingBuild = build;
+          return loadRemoteApp(build).catch(function () {});
+        }
+        mark('current', build);
+      })
+      .catch(function (error) { mark('check-failed', String(error && error.message || error)); });
   }
 
   window.ResuMateOTA = {
     baseUrl: BASE,
     versionUrl: VERSION_URL,
-    runtimeUrl: RUNTIME_URL,
-    check: check,
+    appUrl: INDEX_URL,
+    pollMs: POLL_MS,
+    check: function () { return check(false); },
     status: function () { return window.__RESUMATE_OTA__ || null; }
   };
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', check, { once: true });
-  } else {
-    check();
-  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { check(true); }, { once: true });
+  else check(true);
+
+  setInterval(function () { check(false); }, POLL_MS);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) check(false); });
+  window.addEventListener('online', function () { check(false); });
 })();
