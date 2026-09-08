@@ -18,17 +18,20 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout latest main
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          ref: main
 
       - name: Publish OTA version manifest
         shell: bash
-        env:
-          BUILD_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
+          git fetch origin main
+          git checkout -B main origin/main
+          BUILD_SHA="$(git rev-parse HEAD)"
+          export BUILD_SHA
           python3 - <<'PY'
           import json, os
           sha = os.environ['BUILD_SHA']
@@ -48,7 +51,7 @@ jobs:
             echo 'OTA manifest already current.'
           else
             git commit -m 'chore: publish OTA version manifest'
-            git push
+            git push origin HEAD:main
           fi
 
       - name: Verify OTA payload
