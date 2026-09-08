@@ -7,6 +7,7 @@
   var POLL_MS = 3000;
   var startingBuild = window.__RESUMATE_BUNDLED_BUILD__ || null;
   var pendingBuild = null;
+  var pendingReleaseNotes = [];
   var reloading = false;
   var restoring = false;
   var banner = null;
@@ -170,21 +171,25 @@
   }
 
   function ring() {
-    try { if (navigator.vibrate) navigator.vibrate([120, 70, 120]); } catch (_) {}
+    try { if (navigator.vibrate) navigator.vibrate([160, 80, 160, 80, 220]); } catch (_) {}
     try {
       var AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return;
       audioContext = audioContext || new AC();
       if (audioContext.state === 'suspended') audioContext.resume().catch(function () {});
       var now = audioContext.currentTime;
-      [0, 0.22].forEach(function (offset) {
+      [
+        { offset: 0, freq: 660 },
+        { offset: 0.22, freq: 880 },
+        { offset: 0.44, freq: 1046 }
+      ].forEach(function (tone) {
         var osc = audioContext.createOscillator(), gain = audioContext.createGain();
-        osc.type = 'sine'; osc.frequency.value = offset ? 880 : 660;
-        gain.gain.setValueAtTime(0.0001, now + offset);
-        gain.gain.exponentialRampToValueAtTime(0.16, now + offset + 0.015);
-        gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.16);
+        osc.type = 'sine'; osc.frequency.value = tone.freq;
+        gain.gain.setValueAtTime(0.0001, now + tone.offset);
+        gain.gain.exponentialRampToValueAtTime(0.42, now + tone.offset + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + tone.offset + 0.20);
         osc.connect(gain); gain.connect(audioContext.destination);
-        osc.start(now + offset); osc.stop(now + offset + 0.18);
+        osc.start(now + tone.offset); osc.stop(now + tone.offset + 0.22);
       });
     } catch (_) {}
   }
@@ -331,23 +336,42 @@
     } catch (_) {}
   }
 
-  function showUpdateBanner(build) {
+  function normalizeReleaseNotes(notes) {
+    if (!Array.isArray(notes)) return [];
+    return notes.map(function (note) { return String(note || '').trim(); }).filter(Boolean).slice(0, 8);
+  }
+
+  function showUpdateBanner(build, releaseNotes) {
     pendingBuild = String(build);
+    pendingReleaseNotes = normalizeReleaseNotes(releaseNotes);
     mark('update-available', pendingBuild);
     if (banner || !document.body) return;
     banner = document.createElement('div');
     banner.id = 'resumate-ota-update-banner';
     banner.setAttribute('role', 'alert');
+    var notesHtml = pendingReleaseNotes.length
+      ? pendingReleaseNotes.map(function (note) { return '<li style="margin:4px 0">' + note.replace(/[&<>]/g, function (ch) { return ({'&':'&amp;','<':'&lt;','>':'&gt;'}[ch]); }) + '</li>'; }).join('')
+      : '<li style="margin:4px 0">Latest ResuMate improvements and fixes.</li>';
     banner.innerHTML = '<div style="font-weight:700;font-size:14px;margin-bottom:4px">New ResuMate update available</div>' +
-      '<div style="font-size:12px;opacity:.82;margin-bottom:10px">Update now to get the latest improvements.</div>' +
-      '<div style="display:flex;align-items:center;gap:10px">' +
-      '<button id="resumate-ota-update-toggle" type="button" aria-pressed="false" style="appearance:none;border:0;border-radius:999px;padding:9px 15px;font-weight:700;cursor:pointer">Update now</button>' +
+      '<div style="font-size:12px;opacity:.82;margin-bottom:10px">Review what changed before installing.</div>' +
+      '<div id="resumate-ota-details" style="display:none;background:#1b1b1b;border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:10px 12px;margin:0 0 12px;font-size:11px;line-height:1.45"><div style="font-weight:700;margin-bottom:5px">What’s new</div><ul style="padding-left:18px;margin:0">' + notesHtml + '</ul></div>' +
+      '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
+      '<button id="resumate-ota-update-toggle" type="button" aria-expanded="false" style="appearance:none;border:0;border-radius:999px;padding:9px 15px;font-weight:700;cursor:pointer;background:#fff;color:#111">See what’s new</button>' +
       '<button id="resumate-ota-dismiss" type="button" style="background:transparent;border:0;color:inherit;opacity:.75;padding:6px;cursor:pointer">Later</button></div>';
     banner.style.cssText = 'position:fixed;left:12px;right:12px;bottom:calc(56px + env(safe-area-inset-bottom));z-index:2147483647;background:#111;color:#fff;padding:14px 16px;border-radius:14px;box-shadow:0 8px 30px rgba(0,0,0,.28);font-family:system-ui,-apple-system,Segoe UI,sans-serif;box-sizing:border-box;';
     document.body.appendChild(banner);
     var updateButton = document.getElementById('resumate-ota-update-toggle'), laterButton = document.getElementById('resumate-ota-dismiss');
     if (updateButton) updateButton.addEventListener('click', function () {
-      updateButton.setAttribute('aria-pressed', 'true'); updateButton.textContent = 'Updating…'; updateButton.disabled = true;
+      var details = document.getElementById('resumate-ota-details');
+      var expanded = updateButton.getAttribute('aria-expanded') === 'true';
+      if (!expanded) {
+        if (details) details.style.display = 'block';
+        updateButton.setAttribute('aria-expanded', 'true');
+        updateButton.textContent = 'Update now';
+        return;
+      }
+      updateButton.textContent = 'Updating…';
+      updateButton.disabled = true;
       loadRemoteApp(pendingBuild).catch(function () { updateButton.disabled = false; updateButton.textContent = 'Retry update'; });
     });
     if (laterButton) laterButton.addEventListener('click', function () { if (banner && banner.parentNode) banner.parentNode.removeChild(banner); banner = null; mark('update-pending', pendingBuild); });
@@ -382,7 +406,8 @@
         var build = String(manifest.build || manifest.version || '');
         if (!build) throw new Error('OTA manifest build missing');
         if (startingBuild === null) startingBuild = build;
-        if (build !== startingBuild) { applyUiChromeFix(); ensureOtaControl(); showUpdateBanner(build); return; }
+        var releaseNotes = normalizeReleaseNotes(manifest.releaseNotes || manifest.notes);
+        if (build !== startingBuild) { applyUiChromeFix(); ensureOtaControl(); showUpdateBanner(build, releaseNotes); return; }
         applyUiChromeFix(); ensureOtaControl(); mark('current', build);
       })
       .catch(function (error) { applyUiChromeFix(); ensureOtaControl(); mark('check-failed', String(error && error.message || error)); });
