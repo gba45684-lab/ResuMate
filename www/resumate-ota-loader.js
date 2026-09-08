@@ -206,22 +206,23 @@
         return r.text();
       })
       .then(function (html) {
-        dbPut('active', { build: String(build), html: html, savedAt: Date.now() }).catch(function () {});
-        html = html.replace(/<script\\b[^>]*src=["'][^"']*resumate-ota-loader\\.js(?:\\?[^"']*)?["'][^>]*>\\s*<\\/script>/gi, '');
-        html = injectBuildMarker(html, build);
-        var remoteBase = '<base href="' + BASE + '">';
-        if (!/<base\\s/i.test(html)) html = html.replace(/<head([^>]*)>/i, '<head$1>' + remoteBase);
-        var loaderTag = '<script src="' + BASE + 'resumate-ota-loader.js?v=' + encodeURIComponent(build) + '" defer></script>';
-        if (/<\\/body>/i.test(html)) html = html.replace(/<\\/body>/i, loaderTag + '\\n</body>');
-        else html += loaderTag;
-        document.open();
-        document.write(html);
-        document.close();
-        reloading = false;
-        startingBuild = String(build);
-        pendingBuild = null;
-        applyUiChromeFix();
-        mark('updated', String(build));
+        return dbPut('active', { build: String(build), html: html, savedAt: Date.now() }).then(function () {
+          html = html.replace(/<script\\b[^>]*src=["'][^"']*resumate-ota-loader\\.js(?:\\?[^"']*)?["'][^>]*>\\s*<\\/script>/gi, '');
+          html = injectBuildMarker(html, build);
+          var remoteBase = '<base href="' + BASE + '">';
+          if (!/<base\\s/i.test(html)) html = html.replace(/<head([^>]*)>/i, '<head$1>' + remoteBase);
+          var loaderTag = '<script src="' + BASE + 'resumate-ota-loader.js?v=' + encodeURIComponent(build) + '" defer></script>';
+          if (/<\\/body>/i.test(html)) html = html.replace(/<\\/body>/i, loaderTag + '\\n</body>');
+          else html += loaderTag;
+          document.open();
+          document.write(html);
+          document.close();
+          reloading = false;
+          startingBuild = String(build);
+          pendingBuild = null;
+          applyUiChromeFix();
+          mark('updated', String(build));
+        });
       })
       .catch(function (error) {
         reloading = false;
@@ -231,6 +232,7 @@
   }
 
   function check(initial) {
+    if (restoring) return;
     if (!navigator.onLine) { applyUiChromeFix(); mark('offline', 'Using bundled application.'); return; }
     fetch(VERSION_URL + '?t=' + Date.now(), { cache: 'no-store', credentials: 'omit' })
       .then(function (r) {
@@ -238,6 +240,7 @@
         return r.json();
       })
       .then(function (manifest) {
+        if (restoring) return;
         if (!manifest || manifest.enabled === false) { applyUiChromeFix(); mark('disabled'); return; }
         var build = String(manifest.build || manifest.version || Date.now());
         if (startingBuild === null) {
@@ -270,12 +273,11 @@
   function start() {
     applyUiChromeFix();
     restoreCachedApp().then(function (restored) {
-      if (restored) return;
-      check(true);
+      if (!restored) check(true);
+      setInterval(function () { check(false); }, POLL_MS);
+      document.addEventListener('visibilitychange', function () { if (!document.hidden) check(false); });
+      window.addEventListener('online', function () { check(false); });
     });
-    setInterval(function () { check(false); }, POLL_MS);
-    document.addEventListener('visibilitychange', function () { if (!document.hidden) check(false); });
-    window.addEventListener('online', function () { check(false); });
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
