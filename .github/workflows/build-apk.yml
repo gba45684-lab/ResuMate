@@ -3,10 +3,16 @@ name: ResuMate Android APK
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'ota/**'
   workflow_dispatch:
 
 permissions:
   contents: write
+
+concurrency:
+  group: resumate-android-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -23,7 +29,7 @@ jobs:
           node-version: 20
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Restructure uploaded ZIP
         shell: bash
