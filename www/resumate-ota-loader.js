@@ -12,6 +12,32 @@
   var banner = null;
   var audioContext = null;
 
+  function applyUiChromeFix() {
+    try {
+      var old = document.getElementById('resumate-ui-chrome-fix');
+      if (old) old.remove();
+      var style = document.createElement('style');
+      style.id = 'resumate-ui-chrome-fix';
+      style.textContent = [
+        'html, body { margin-top: 0 !important; padding-top: 0 !important; }',
+        'html { scroll-padding-top: 0 !important; }',
+        '[id="status-bar"], [id="statusBar"], [id="app-status-bar"], [id="top-status-bar"],',
+        '[class~="status-bar"], [class~="statusBar"], [class~="app-status-bar"], [class~="top-status-bar"],',
+        '[data-status-bar] { display: none !important; }',
+        '[style*="safe-area-inset-top"] { padding-top: 0 !important; margin-top: 0 !important; }',
+        'body > :first-child { margin-top: 0 !important; }'
+      ].join('\n');
+      (document.head || document.documentElement).appendChild(style);
+      var metas = document.querySelectorAll('meta[name="viewport"]');
+      metas.forEach(function (meta) {
+        var content = meta.getAttribute('content') || '';
+        if (/viewport-fit\s*=\s*cover/i.test(content)) {
+          meta.setAttribute('content', content.replace(/,?\s*viewport-fit\s*=\s*cover/ig, ''));
+        }
+      });
+    } catch (_) {}
+  }
+
   function mark(status, detail) {
     try {
       window.__RESUMATE_OTA__ = { status: status, detail: detail || '', checkedAt: new Date().toISOString(), pollMs: POLL_MS, bundledBuild: startingBuild || null, pendingBuild: pendingBuild || null };
@@ -119,6 +145,7 @@
         reloading = false;
         startingBuild = String(build);
         pendingBuild = null;
+        applyUiChromeFix();
         mark('updated', String(build));
       })
       .catch(function (error) {
@@ -129,27 +156,30 @@
   }
 
   function check(initial) {
-    if (!navigator.onLine) { mark('offline', 'Using bundled application.'); return; }
+    if (!navigator.onLine) { applyUiChromeFix(); mark('offline', 'Using bundled application.'); return; }
     fetch(VERSION_URL + '?t=' + Date.now(), { cache: 'no-store', credentials: 'omit' })
       .then(function (r) {
         if (!r.ok) throw new Error('version manifest HTTP ' + r.status);
         return r.json();
       })
       .then(function (manifest) {
-        if (!manifest || manifest.enabled === false) { mark('disabled'); return; }
+        if (!manifest || manifest.enabled === false) { applyUiChromeFix(); mark('disabled'); return; }
         var build = String(manifest.build || manifest.version || Date.now());
         if (startingBuild === null) {
           startingBuild = build;
+          applyUiChromeFix();
           mark('current', build);
           return;
         }
         if (build !== startingBuild) {
+          applyUiChromeFix();
           showUpdateBanner(build);
           return;
         }
+        applyUiChromeFix();
         mark('current', build);
       })
-      .catch(function (error) { mark('check-failed', String(error && error.message || error)); });
+      .catch(function (error) { applyUiChromeFix(); mark('check-failed', String(error && error.message || error)); });
   }
 
   window.ResuMateOTA = {
@@ -163,6 +193,7 @@
   };
 
   function start() {
+    applyUiChromeFix();
     check(true);
     setInterval(function () { check(false); }, POLL_MS);
     document.addEventListener('visibilitychange', function () { if (!document.hidden) check(false); });
