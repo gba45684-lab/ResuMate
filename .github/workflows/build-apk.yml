@@ -61,6 +61,9 @@ jobs:
             git push
           fi
 
+      - name: Prepare web bundle
+        run: npm run build
+
       - name: Validate web app
         run: npm run check
 
