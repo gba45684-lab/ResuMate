@@ -3,10 +3,8 @@ name: ResuMate OTA
 on:
   push:
     branches: [main]
-    paths:
-      - 'www/**'
-      - 'ota/resumate-runtime.js'
-      - '.github/workflows/deploy-ota.yml'
+    paths-ignore:
+      - 'ota/**'
   workflow_dispatch:
 
 permissions:
