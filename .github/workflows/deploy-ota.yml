@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: resumate-ota
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   publish:
@@ -30,8 +30,14 @@ jobs:
           set -euo pipefail
           git fetch origin main
           git checkout -B main origin/main
-          BUILD_SHA="$(git rev-parse HEAD)"
-          RELEASE_SUBJECT="$(git log -1 --pretty=%s)"
+          # The OTA build identity must reference the latest real app/source commit,
+          # not an ota/version.json commit created by this workflow.
+          BUILD_SHA="$(git rev-list --max-count=1 HEAD -- . ':(exclude)ota/**')"
+          if [ -z "$BUILD_SHA" ]; then
+            echo 'Unable to resolve source build SHA.'
+            exit 1
+          fi
+          RELEASE_SUBJECT="$(git log -1 --pretty=%s "$BUILD_SHA")"
           export BUILD_SHA RELEASE_SUBJECT
           python3 - <<'PY'
           import json, os
@@ -73,6 +79,7 @@ jobs:
           assert manifest.get('enabled') is True
           assert manifest.get('channel') == 'stable'
           assert manifest.get('build')
+          assert manifest.get('build') != manifest.get('version_only_manifest_commit')
           assert manifest.get('version') == manifest['build'][:12]
           print('OTA payload ready:', json.dumps(manifest, separators=(',', ':')))
           PY
