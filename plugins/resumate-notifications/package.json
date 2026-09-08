@@ -1,0 +1,13 @@
+{
+  "name": "@resumate/notifications",
+  "version": "1.0.0",
+  "description": "Native Android notifications and document export bridge for ResuMate",
+  "main": "dist/plugin.js",
+  "types": "dist/plugin.d.ts",
+  "files": ["android", "dist", "capacitor", "package.json"],
+  "capacitor": {
+    "android": {
+      "src": "android"
+    }
+  }
+}
