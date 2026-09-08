@@ -4,65 +4,59 @@ on:
   push:
     branches: [main]
     paths:
-      - 'www/index.html'
       - 'www/**'
-      - 'ota/**'
+      - 'ota/resumate-runtime.js'
       - '.github/workflows/deploy-ota.yml'
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
-  group: resumate-pages
+  group: resumate-ota
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  publish:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
-        with:
-          enablement: true
-
-      - name: Prepare OTA package
+      - name: Publish OTA version manifest
         shell: bash
         env:
           BUILD_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          test -f www/index.html
-          test -f ota/resumate-runtime.js
-          mkdir -p _site
-          cp www/index.html _site/app.html
-          cp ota/resumate-runtime.js _site/resumate-runtime.js
-          cat > _site/index.html <<'EOF'
-          <!doctype html>
-          <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ResuMate OTA</title></head><body><p>ResuMate OTA service is active.</p></body></html>
-          EOF
           python3 - <<'PY'
           import json, os
-          sha=os.environ['BUILD_SHA']
-          with open('_site/version.json','w',encoding='utf-8') as f:
-              json.dump({'enabled': True, 'version': sha[:12], 'build': sha, 'channel': 'stable'}, f, separators=(',', ':'))
+          sha = os.environ['BUILD_SHA']
+          with open('ota/version.json', 'w', encoding='utf-8') as f:
+              json.dump({
+                  'enabled': True,
+                  'version': sha[:12],
+                  'build': sha,
+                  'channel': 'stable'
+              }, f, separators=(',', ':'))
               f.write('\n')
           PY
-          printf '%s\n' 'Full ResuMate OTA package prepared.'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ota/version.json
+          if git diff --cached --quiet; then
+            echo 'OTA manifest already current.'
+          else
+            git commit -m 'chore: publish OTA version manifest'
+            git push
+          fi
 
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v4
-        with:
-          path: _site
-
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Verify OTA payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s www/index.html
+          test -s www/resumate-ota-loader.js
+          test -s ota/resumate-runtime.js
+          test -s ota/version.json
+          printf 'OTA payload ready: %s\n' "$(cat ota/version.json)"
