@@ -38,6 +38,49 @@
   function buildIndex(build) { return buildBase(build) + 'index.html'; }
   function buildLoader(build) { return buildBase(build) + 'resumate-ota-loader.js?v=' + encodeURIComponent(String(build)); }
 
+  function applyPreviewUiFix() {
+    try {
+      if (!document.head) return;
+      var old = document.getElementById('resumate-preview-ui-fix');
+      if (old) old.remove();
+      var style = document.createElement('style');
+      style.id = 'resumate-preview-ui-fix';
+      style.textContent = [
+        '/* Preview control separation: ball -> rail -> flyout, never overlapping. */',
+        '.preview-studio { position:relative !important; overflow:visible !important; }',
+        '.preview-stage-wrap { padding-right:76px !important; box-sizing:border-box !important; }',
+        '.ball-trigger { right:14px !important; width:52px !important; height:52px !important; z-index:30 !important; }',
+        '.preview-rail { right:76px !important; width:56px !important; padding:10px 7px !important; gap:5px !important; z-index:29 !important; box-shadow:0 18px 44px rgba(0,0,0,.16) !important; backdrop-filter:blur(12px) !important; }',
+        '.preview-rail .rail-btn { width:40px !important; height:40px !important; font-size:16px !important; border-radius:11px !important; }',
+        '.preview-rail .sep { width:30px !important; margin:5px 0 !important; }',
+        '.preview-rail .rail-btn .label { right:50px !important; z-index:32 !important; }',
+        '.flyout { right:144px !important; z-index:31 !important; max-width:calc(100% - 156px) !important; box-sizing:border-box !important; }',
+        '.flyout.open { z-index:35 !important; }',
+        '.preview-rail.open { z-index:29 !important; }',
+        '@media (max-width:600px) {',
+        '  .preview-stage-wrap { padding-right:66px !important; }',
+        '  .ball-trigger { right:8px !important; width:48px !important; height:48px !important; font-size:17px !important; z-index:30 !important; }',
+        '  .preview-rail { right:64px !important; width:50px !important; padding:8px 6px !important; gap:4px !important; max-height:min(72vh,420px) !important; z-index:29 !important; }',
+        '  .preview-rail .rail-btn { width:38px !important; height:38px !important; font-size:15px !important; border-radius:10px !important; }',
+        '  .preview-rail .sep { width:26px !important; margin:5px 0 !important; }',
+        '  .preview-rail .rail-btn .label { display:none !important; }',
+        '  .flyout { right:116px !important; width:min(250px,calc(100vw - 128px)) !important; max-width:none !important; max-height:min(68vh,360px) !important; z-index:35 !important; }',
+        '}',
+        '@media (max-width:350px) {',
+        '  .preview-stage-wrap { padding-right:60px !important; }',
+        '  .ball-trigger { right:6px !important; width:44px !important; height:44px !important; }',
+        '  .preview-rail { right:56px !important; width:46px !important; padding:7px 5px !important; }',
+        '  .preview-rail .rail-btn { width:34px !important; height:34px !important; font-size:14px !important; }',
+        '  .flyout { right:106px !important; width:calc(100vw - 116px) !important; }',
+        '}',
+        '@media (prefers-reduced-motion:reduce) {',
+        '  .ball-trigger, .preview-rail, .flyout, .preview-rail .rail-btn { transition:none !important; }',
+        '}'
+      ].join('\n');
+      document.head.appendChild(style);
+    } catch (_) {}
+  }
+
   function applyUiChromeFix() {
     try {
       var old = document.getElementById('resumate-ui-chrome-fix');
@@ -57,6 +100,7 @@
         var content = meta.getAttribute('content') || '';
         if (/viewport-fit\s*=\s*cover/i.test(content)) meta.setAttribute('content', content.replace(/,?\s*viewport-fit\s*=\s*cover/ig, ''));
       });
+      applyPreviewUiFix();
     } catch (_) {}
   }
 
@@ -365,7 +409,7 @@
       document.addEventListener('visibilitychange', function () { if (!document.hidden) { ensureOtaControl(); check(); } });
       window.addEventListener('online', check);
       window.addEventListener('pageshow', function () { ensureOtaControl(true); });
-      window.addEventListener('resize', function () { applyOtaPosition(); });
+      window.addEventListener('resize', function () { applyOtaPosition(); applyPreviewUiFix(); });
     });
   }
 
