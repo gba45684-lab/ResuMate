@@ -1,1 +1,1 @@
-{"enabled":true,"version":"16fb0d4fb8c7","build":"16fb0d4fb8c74e92e71971f13ca217a016b21f6f","channel":"stable","releaseNotes":["fix: align OTA loader with verifier and notifications"]}
+{"enabled":true,"version":"11b8347b6aa8","build":"11b8347b6aa86696a212807d15f748e75ef91a38","channel":"stable","releaseNotes":["fix: restore OTA cache-bypass check"]}
