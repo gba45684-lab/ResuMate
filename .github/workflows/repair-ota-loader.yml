@@ -1,0 +1,38 @@
+name: Repair OTA loader
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/repair-ota-loader.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Restore full OTA loader and apply UI fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git checkout 803fde049b6f850f19d17cb694f25d2bedb58293 -- www/resumate-ota-loader.js
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('www/resumate-ota-loader.js')
+          s=p.read_text()
+          s=s.replace("'html, body { margin-top: 0 !important; padding-top: 0 !important; }',", "'html, body { margin-top: 0 !important; padding-top: 0 !important; min-height:100%; }',\n        'body > *:first-child { margin-top:0 !important; padding-top:0 !important; }',")
+          s=s.replace("'[data-status-bar] { display: none !important; }',", "'[data-status-bar] { display: none !important; }',\n        'body { background:#F3EEDE !important; }',")
+          s=s.replace('function ensureOtaControl(force) {', 'function ensureOtaControl(force) {\n    return;')
+          p.write_text(s)
+          PY
+          rm -f .github/workflows/repair-ota-loader.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add www/resumate-ota-loader.js .github/workflows/repair-ota-loader.yml
+          git commit -m 'Restore full OTA loader and clean Android top chrome'
+          git push
