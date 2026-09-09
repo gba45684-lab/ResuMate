@@ -1,1 +1,1 @@
-{"enabled":true,"version":"f123dff5daa5","build":"f123dff5daa5650a4b3860c3f327dc7492887a89","channel":"stable","releaseNotes":["Trigger Android APK build for repaired OTA loader"]}
+{"enabled":true,"version":"393793e6f736","build":"393793e6f736307d3c4c769cf7fb9a1560cce0b5","channel":"stable","releaseNotes":["test: publish OTA ring test payload"]}
