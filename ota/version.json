@@ -1,1 +1,1 @@
-{"enabled":true,"version":"8d021895a7b4","build":"8d021895a7b474bb287ef4fbde4aca12b6c08f9c","channel":"stable","releaseNotes":["fix: add definitive OTA pass indicator"]}
+{"enabled":true,"version":"247618621305","build":"2476186213055437c5a8d340f408657af096a15e","channel":"stable","releaseNotes":["fix: restore OTA update control required by build check"]}
