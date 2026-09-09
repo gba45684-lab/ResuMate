@@ -1,1 +1,1 @@
-{"enabled":true,"version":"ac40638219e3","build":"ac40638219e3a1808c823f0c9c09557cfb466008","channel":"stable","releaseNotes":["fix: make OTA cache bypass verifier compatible"]}
+{"enabled":true,"version":"3ded5b94c03e","build":"3ded5b94c03ea91590f0858a03dee6163cf149b9","channel":"stable","releaseNotes":["fix: make OTA polling verifier-compatible"]}
