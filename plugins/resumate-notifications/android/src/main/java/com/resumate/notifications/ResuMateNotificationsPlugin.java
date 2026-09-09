@@ -9,6 +9,7 @@ import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
@@ -37,8 +38,32 @@ import java.util.UUID;
 public class ResuMateNotificationsPlugin extends Plugin {
     private static final String CHANNEL_ID = "resumate_downloads";
     private static final int NOTIFICATION_PERMISSION_REQUEST = 7341;
-    // Capacitor's generated Android app already provides this FileProvider.
     private static final String AUTH_SUFFIX = ".fileprovider";
+
+    @Override
+    public void load() {
+        super.load();
+        applySystemBars();
+    }
+
+    private void applySystemBars() {
+        try {
+            if (getActivity() == null) return;
+            getActivity().runOnUiThread(() -> {
+                try {
+                    android.view.Window window = getActivity().getWindow();
+                    window.setStatusBarColor(Color.BLACK);
+                    window.setNavigationBarColor(Color.rgb(243, 238, 222));
+                    if (Build.VERSION.SDK_INT >= 23) {
+                        int flags = window.getDecorView().getSystemUiVisibility();
+                        flags &= ~android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+                        if (Build.VERSION.SDK_INT >= 26) flags |= android.view.View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+                        window.getDecorView().setSystemUiVisibility(flags);
+                    }
+                } catch (Exception ignored) {}
+            });
+        } catch (Exception ignored) {}
+    }
 
     @PluginMethod
     public void saveAndNotify(PluginCall call) {
