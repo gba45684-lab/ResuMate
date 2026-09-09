@@ -1,1 +1,1 @@
-{"enabled":true,"version":"d13bb4df8ae8","build":"d13bb4df8ae856dc3130dea3cf175fb2849aa4bf","channel":"stable","releaseNotes":["Hide OTA control and expose ring test"]}
+{"enabled":true,"version":"803fde049b6f","build":"803fde049b6f850f19d17cb694f25d2bedb58293","channel":"stable","releaseNotes":["Validate and hard-apply OTA payloads"]}
