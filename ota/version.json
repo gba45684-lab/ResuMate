@@ -1,1 +1,1 @@
-{"enabled":true,"version":"803fde049b6f","build":"803fde049b6f850f19d17cb694f25d2bedb58293","channel":"stable","releaseNotes":["Validate and hard-apply OTA payloads"]}
+{"enabled":true,"version":"64b728ca8687","build":"64b728ca8687f70e78f276d5ad232b81b720682d","channel":"stable","releaseNotes":["Hide OTA chrome and enforce clean top UI"]}
