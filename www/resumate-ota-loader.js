@@ -384,15 +384,42 @@
     reloading = true;
     var target = String(build);
     mark('loading', target);
-    return fetch(buildIndex(target) + '?v=' + encodeURIComponent(target), { cache: 'no-store', credentials: 'omit' })
-      .then(function (r) { if (!r.ok) throw new Error('remote app HTTP ' + r.status); return r.text(); })
-      .then(function (html) {
+    var indexUrl = buildIndex(target) + '?v=' + encodeURIComponent(target);
+    var loaderUrl = buildLoader(target) + '&t=' + Date.now();
+    return Promise.all([
+      fetch(indexUrl, { cache: 'no-store', credentials: 'omit' }).then(function (r) {
+        if (!r.ok) throw new Error('remote app HTTP ' + r.status);
+        return r.text();
+      }),
+      fetch(loaderUrl, { cache: 'no-store', credentials: 'omit' }).then(function (r) {
+        if (!r.ok) throw new Error('remote OTA loader HTTP ' + r.status);
+        return r.text();
+      })
+    ])
+      .then(function (parts) {
+        var html = String(parts[0] || '');
+        var loaderText = String(parts[1] || '');
+        if (html.length < 1000) throw new Error('remote app payload too small');
+        if (loaderText.indexOf('window.ResuMateOTA') === -1) throw new Error('remote OTA loader invalid');
+        html = prepareRemoteHtml(html, target);
         return dbPut('active', { build: target, html: html, savedAt: Date.now() }).then(function () {
-          document.open(); document.write(prepareRemoteHtml(html, target)); document.close();
-          reloading = false; startingBuild = target; pendingBuild = null; applyUiChromeFix(); ensureOtaControl(true); mark('updated', target);
+          document.open();
+          document.write(html);
+          document.close();
+          startingBuild = target;
+          pendingBuild = null;
+          reloading = false;
+          applyUiChromeFix();
+          ensureOtaControl(true);
+          mark('updated', target);
+          setTimeout(function () { try { ensureOtaControl(true); } catch (_) {} }, 250);
         });
       })
-      .catch(function (error) { reloading = false; mark('fallback', String(error && error.message || error)); throw error; });
+      .catch(function (error) {
+        reloading = false;
+        mark('fallback', String(error && error.message || error));
+        throw error;
+      });
   }
 
   function check() {
