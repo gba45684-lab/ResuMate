@@ -1,0 +1,1 @@
+ResuMate OTA ring test payload marker. No UI/runtime behavior change.
