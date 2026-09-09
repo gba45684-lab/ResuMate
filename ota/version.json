@@ -1,1 +1,1 @@
-{"enabled":true,"version":"393793e6f736","build":"393793e6f736307d3c4c769cf7fb9a1560cce0b5","channel":"stable","releaseNotes":["test: publish OTA ring test payload"]}
+{"enabled":true,"version":"8d021895a7b4","build":"8d021895a7b474bb287ef4fbde4aca12b6c08f9c","channel":"stable","releaseNotes":["fix: add definitive OTA pass indicator"]}
