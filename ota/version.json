@@ -1,11 +1,1 @@
-{
-  "enabled": true,
-  "version": "8f7cd401ccf4",
-  "build": "8f7cd401ccf4cafa62bc14ce902f4f7885c2af9e",
-  "channel": "stable",
-  "releaseNotes": [
-    "Restore the full OTA loader so web updates apply correctly.",
-    "Hide the OTA control while keeping OTA permanently enabled.",
-    "Keep the Android top area clean with no extra web UI padding."
-  ]
-}
+{"enabled":true,"version":"f123dff5daa5","build":"f123dff5daa5650a4b3860c3f327dc7492887a89","channel":"stable","releaseNotes":["Trigger Android APK build for repaired OTA loader"]}
