@@ -1,1 +1,1 @@
-{"enabled":true,"version":"11b8347b6aa8","build":"11b8347b6aa86696a212807d15f748e75ef91a38","channel":"stable","releaseNotes":["fix: restore OTA cache-bypass check"]}
+{"enabled":true,"version":"ac40638219e3","build":"ac40638219e3a1808c823f0c9c09557cfb466008","channel":"stable","releaseNotes":["fix: make OTA cache bypass verifier compatible"]}
